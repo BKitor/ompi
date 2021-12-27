@@ -1,0 +1,6 @@
+[missing collective]
+There was a problem while initializing support for the CUDA reduction operations.
+hostname:   %s
+priority:   %d
+collective: %s
+#
