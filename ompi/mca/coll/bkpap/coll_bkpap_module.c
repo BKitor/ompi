@@ -12,10 +12,6 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 OBJ_CLASS_INSTANCE(mca_coll_bkpap_module_t, mca_coll_base_module_t,
 	mca_coll_bkpap_module_construct, mca_coll_bkpap_module_destruct);
 
-int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_threads) {
-	return OMPI_SUCCESS;
-}
-
 mca_coll_base_module_t* mca_coll_bkpap_comm_query(struct ompi_communicator_t* comm, int* priority) {
 	mca_coll_bkpap_module_t* bkpap_module;
 
