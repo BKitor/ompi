@@ -4,6 +4,10 @@ if [ "$BK_OMB_DIR" == "" ];then
 	echo "No BK_OMPI_DIR, you need to initenv"
 fi
 
+pushd ../../..
+make install
+popd
+
 mpirun -n 4 \
 	--mca coll ^tuned \
 	--mca coll_base_verbose 9 \

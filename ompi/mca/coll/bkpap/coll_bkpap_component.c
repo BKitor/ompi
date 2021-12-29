@@ -23,6 +23,8 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
 
     .ucp_context = NULL,
     .ucp_worker = NULL,
+    .ucp_worker_addr = NULL,
+    .ucp_worker_addr_len = 0,
 
     .out_stream = -1,
     .priority = 30,
@@ -70,6 +72,17 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads){
 	worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
 	worker_params.thread_mode = (enable_mpi_threads == MPI_THREAD_SINGLE) ? UCS_THREAD_MODE_SINGLE : UCS_THREAD_MODE_MULTI;
 	status = ucp_worker_create(mca_coll_bkpap_component.ucp_context, &worker_params, &mca_coll_bkpap_component.ucp_worker);
+
+    if (UCS_OK != status) {
+        ucp_cleanup(mca_coll_bkpap_component.ucp_context);
+        return OMPI_ERROR;
+    }
+    
+    status = ucp_worker_get_address(
+        mca_coll_bkpap_component.ucp_worker,
+        &mca_coll_bkpap_component.ucp_worker_addr,
+        &mca_coll_bkpap_component.ucp_worker_addr_len
+    );
 
     if (UCS_OK != status) {
         ucp_cleanup(mca_coll_bkpap_component.ucp_context);

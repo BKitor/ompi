@@ -17,6 +17,8 @@ BEGIN_C_DECLS
 
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
 #define BKPAP_OUTPUT(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__)
+#define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR"_str, ##__VA_ARGS__)
+// #define BKPAP_ERROR(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__)
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
 	bool enable_mpi_threads);
@@ -38,6 +40,8 @@ typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_2_4_0_t *fallback_allreduce_module;
 	mca_coll_base_module_allreduce_fn_t fallback_allreduce;
 	
+	ucp_ep_h *ucp_ep_arr;
+	
 } mca_coll_bkpap_module_t;
 
 OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);
@@ -47,6 +51,8 @@ typedef struct mca_coll_bkpap_component_t {
 	
 	ucp_context_h ucp_context;
 	ucp_worker_h ucp_worker;
+	ucp_address_t *ucp_worker_addr;
+	size_t ucp_worker_addr_len;
 
 	int out_stream;
 	int priority;
@@ -61,6 +67,11 @@ typedef struct mca_coll_bkpap_amoreq_t{
 } mca_coll_bkpap_amoreq_t;
 
 void mca_coll_bkpap_amoreq_init(void *request);
+
+// setup aray of endpoints for ucp communicatoins 
+int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wireup_recievebuffers(void);
+int mca_coll_bkpap_wireup_syncstructure(void);
 
 END_C_DECLS
 
