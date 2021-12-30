@@ -41,7 +41,8 @@ typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_allreduce_fn_t fallback_allreduce;
 	
 	ucp_ep_h *ucp_ep_arr;
-	
+	uint32_t wsize;
+	uint32_t rank; // these are saved for wiredown_ep
 } mca_coll_bkpap_module_t;
 
 OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);

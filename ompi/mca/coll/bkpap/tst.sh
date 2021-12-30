@@ -1,5 +1,7 @@
 #!/cvmfs/soft.computecanada.ca/gentoo/2020/bin/bash
 
+set -e
+
 if [ "$BK_OMB_DIR" == "" ];then
 	echo "No BK_OMPI_DIR, you need to initenv"
 fi

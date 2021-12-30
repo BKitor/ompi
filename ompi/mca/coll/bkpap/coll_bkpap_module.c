@@ -3,10 +3,21 @@
 #include "opal/util/show_help.h"
 
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
+	module->fallback_allreduce = NULL;
+	module->fallback_allreduce_module = NULL;
+	module->ucp_ep_arr = NULL;
+	module->wsize = -1;
+	module->rank = -1;
 }
 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
+	for (uint32_t i = 0; i < module->wsize; i++) {
+		if(NULL == module->ucp_ep_arr) break;
+		if (NULL == module->ucp_ep_arr[i]) continue;
+		ucp_ep_destroy(module->ucp_ep_arr[i]);
+	}
 	free(module->ucp_ep_arr);
+
 	OBJ_RELEASE(module->fallback_allreduce_module);
 }
 
@@ -31,7 +42,6 @@ mca_coll_base_module_t* mca_coll_bkpap_comm_query(struct ompi_communicator_t* co
 int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_communicator_t* comm) {
 	mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
 
-
 	// check for allgather/allgaterv, needed for setup when echangaing ucp data
 	if (NULL == comm->c_coll->coll_allgather_module || NULL == comm->c_coll->coll_allgatherv_module) {
 		opal_show_help("help-mpi-coll-bkpap.txt", "missing collective", true,
@@ -50,7 +60,7 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 	else {
 		bkpap_module->fallback_allreduce_module = comm->c_coll->coll_allreduce_module;
 		bkpap_module->fallback_allreduce = comm->c_coll->coll_allreduce;
-		OBJ_RETAIN(comm->c_coll->coll_allreduce_module);
+		OBJ_RETAIN(bkpap_module->fallback_allreduce_module);
 	}
 
 	return OMPI_SUCCESS;
@@ -59,7 +69,7 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 
 // might want to make static inline, and move to header
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
-	#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_ep_wireup_err;}
+#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_ep_wireup_err;}
 	ucs_status_t status;
 	ucp_ep_params_t ep_params;
 	int ret = OMPI_SUCCESS;
@@ -68,9 +78,7 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 	size_t* remote_addr_len_buf = NULL;
 	void* remote_addr_buf = NULL;
 
-
-	if (OPAL_LIKELY(NULL != module->ucp_ep_arr))
-		return OMPI_SUCCESS;
+	BKPAP_MSETZ(ep_params);
 
 	agv_recv_arr = calloc(mpi_size, sizeof(*agv_recv_arr));
 	_BKPAP_CHK_MALLOC(agv_recv_arr);
@@ -79,18 +87,20 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 	remote_addr_len_buf = calloc(mpi_size, sizeof(*remote_addr_len_buf));
 	_BKPAP_CHK_MALLOC(remote_addr_len_buf);
 
+	// gather address lengths
 	ret = comm->c_coll->coll_allgather(
-		&mca_coll_bkpap_component.ucp_worker_addr_len, 1, MPI_LONG_LONG, 
+		&mca_coll_bkpap_component.ucp_worker_addr_len, 1, MPI_LONG_LONG,
 		remote_addr_len_buf, 1, MPI_LONG_LONG, comm,
 		comm->c_coll->coll_allgather_module
 	);
-	if(OMPI_SUCCESS != ret){
+	if (OMPI_SUCCESS != ret) {
 		BKPAP_ERROR("Remote addr len allgather failed");
 		return ret;
 	}
 
+	// setup allgatherv count/displs
 	size_t total_addr_buff_size = 0;
-	for(int i = 0; i<mpi_size; i++){
+	for (int i = 0; i < mpi_size; i++) {
 		agv_displ_arr[i] = total_addr_buff_size;
 		agv_recv_arr[i] = remote_addr_len_buf[i];
 		total_addr_buff_size += remote_addr_len_buf[i];
@@ -98,31 +108,34 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 	remote_addr_buf = malloc(total_addr_buff_size);
 	memset(remote_addr_buf, 0, total_addr_buff_size);
 
+	// allgatherv the ucp_addr_t
 	comm->c_coll->coll_allgatherv(
 		mca_coll_bkpap_component.ucp_worker_addr, mca_coll_bkpap_component.ucp_worker_addr_len, MPI_BYTE,
 		remote_addr_buf, agv_recv_arr, agv_displ_arr, MPI_BYTE,
 		comm, comm->c_coll->coll_allgatherv_module
 	);
-	if(OMPI_SUCCESS != ret){
+	if (OMPI_SUCCESS != ret) {
 		BKPAP_ERROR("Remote addr len allgather failed");
 		return ret;
 	}
 
 	// for loop to populate ep_arr
-	module->ucp_ep_arr = calloc(mpi_size, sizeof(*module->ucp_ep_arr));
+	// module->ucp_ep_arr = calloc(mpi_size, sizeof(*module->ucp_ep_arr));
+	module->ucp_ep_arr = calloc(mpi_size, sizeof(ucp_ep_h));
 	_BKPAP_CHK_MALLOC(module->ucp_ep_arr);
-	BKPAP_MSETZ(ep_params);
 	ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
-	for(int i = 0; i<mpi_size; i++){
-		if(i == mpi_rank)continue;
+	module->wsize = mpi_size;
+	module->rank = mpi_rank;
+	for (int i = 0; i < mpi_size; i++) {
+		if (i == mpi_rank)continue;
 		ep_params.address = remote_addr_buf + agv_displ_arr[i];
 		status = ucp_ep_create(mca_coll_bkpap_component.ucp_worker, &ep_params, &module->ucp_ep_arr[i]);
-		if(UCS_OK != status){
+		if (UCS_OK != status) {
 			BKPAP_ERROR("Establishing endpoint %d failed", i);
 			goto bkpap_ep_wireup_err;
 		}
 	}
-	
+
 	free(agv_recv_arr);
 	free(agv_displ_arr);
 	free(remote_addr_len_buf);
