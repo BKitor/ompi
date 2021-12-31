@@ -7,6 +7,10 @@ void mca_coll_bkpap_amoreq_init(void* request) {
 }
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
+#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_init_ucp_err;}
+#define _BKPAP_CHK_UCP(_status) if(UCS_OK != _status){BKPAP_ERROR("UCP op in endpoint wireup failed"); ret = OMPI_ERROR; goto bkpap_init_ucp_err;}
+#define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in endpoint wireup failed"); goto bkpap_init_ucp_err;}
+	int ret = OMPI_SUCCESS;
 	ucp_params_t ucp_params;
 	ucp_worker_params_t worker_params;
 	ucp_config_t* config;
@@ -39,32 +43,25 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 
 	status = ucp_init(&ucp_params, config, &mca_coll_bkpap_component.ucp_context);
 	ucp_config_release(config);
-
-	if (UCS_OK != status) {
-		return OMPI_ERROR;
-	}
+	_BKPAP_CHK_UCP(status);
 
 	worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
 	worker_params.thread_mode = (enable_mpi_threads == MPI_THREAD_SINGLE) ? UCS_THREAD_MODE_SINGLE : UCS_THREAD_MODE_MULTI;
 	status = ucp_worker_create(mca_coll_bkpap_component.ucp_context, &worker_params, &mca_coll_bkpap_component.ucp_worker);
-
-	if (UCS_OK != status) {
-		ucp_cleanup(mca_coll_bkpap_component.ucp_context);
-		return OMPI_ERROR;
-	}
+	_BKPAP_CHK_UCP(status);
 
 	status = ucp_worker_get_address(
 		mca_coll_bkpap_component.ucp_worker,
 		&mca_coll_bkpap_component.ucp_worker_addr,
 		&mca_coll_bkpap_component.ucp_worker_addr_len
 	);
+	_BKPAP_CHK_UCP(status);
 
-	if (UCS_OK != status) {
-		ucp_cleanup(mca_coll_bkpap_component.ucp_context);
-		return OMPI_ERROR;
-	}
-
-	return OMPI_SUCCESS;
+bkpap_init_ucp_err:
+	return ret;
+#undef _BKPAP_CHK_MALLOC
+#undef _BKPAP_CHK_UCP
+#undef _BKPAP_CHK_MPI
 }
 
 // might want to make static inline, and move to header
@@ -124,7 +121,7 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 	module->wsize = mpi_size;
 	module->rank = mpi_rank;
 	for (int i = 0; i < mpi_size; i++) {
-		if (i == mpi_rank)continue;
+		// if (i == mpi_rank)continue;
 		ep_params.address = agv_remote_addr_recv_buf + agv_displ_arr[i];
 		status = ucp_ep_create(mca_coll_bkpap_component.ucp_worker, &ep_params, &module->ucp_ep_arr[i]);
 		_BKPAP_CHK_UCP(status);
@@ -145,9 +142,9 @@ bkpap_ep_wireup_err:
 }
 
 int mca_coll_bkpap_wireup_remote_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
-#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bk_remotepostbuf_wireup_err;}
-#define _BKPAP_CHK_UCP(_status) if(UCS_OK != _status){BKPAP_ERROR("UCP op in postbuf wireup failed"); ret = OMPI_ERROR; goto bk_remotepostbuf_wireup_err;}
-#define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in postbuf wireup failed"); goto bk_remotepostbuf_wireup_err;}
+#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_remotepostbuf_wireup_err;}
+#define _BKPAP_CHK_UCP(_status) if(UCS_OK != _status){BKPAP_ERROR("UCP op in postbuf wireup failed"); ret = OMPI_ERROR; goto bkpap_remotepostbuf_wireup_err;}
+#define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in postbuf wireup failed"); goto bkpap_remotepostbuf_wireup_err;}
 	int ret = OMPI_SUCCESS, mpi_size = ompi_comm_size(comm), mpi_rank = ompi_comm_rank(comm);
 	ucs_status_t status = UCS_OK;
 	ucp_mem_map_params_t mem_map_params;
@@ -224,7 +221,7 @@ int mca_coll_bkpap_wireup_remote_postbuffs(mca_coll_bkpap_module_t* module, stru
 
 	ucp_rkey_buffer_release(rkey_buffer);
 	BKPAP_OUTPUT("ucp postbuf wireup SUCCESS");
-bk_remotepostbuf_wireup_err:
+bkpap_remotepostbuf_wireup_err:
 
 	free(remote_rkey_size_arr);
 	free(agv_displ_arr);
@@ -236,4 +233,114 @@ bk_remotepostbuf_wireup_err:
 #undef _BKPAP_CHK_MPI
 }
 
-int mca_coll_bkpap_wireup_syncstructure(void) { return OPAL_ERR_NOT_IMPLEMENTED; }
+int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm){
+#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_syncstructure_wireup_err;}
+#define _BKPAP_CHK_UCP(_status) if(UCS_OK != _status){BKPAP_ERROR("UCP op in syncstructure wireup failed"); ret = OMPI_ERROR; goto bkpap_syncstructure_wireup_err;}
+#define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in syncstructure wireup failed"); goto bkpap_syncstructure_wireup_err;}
+	int ret = OMPI_SUCCESS, mpi_rank = ompi_comm_rank(comm), mpi_size = ompi_comm_size(comm);
+	ucp_mem_map_params_t mem_map_params;
+	ucs_status_t status = UCS_OK;
+	void *counter_rkey_buffer = NULL, *arrival_arr_rkey_buffer = NULL;
+	size_t counter_rkey_buffer_size, arrival_arr_rkey_buffer_size;
+
+	
+	if (mpi_rank == 0){
+		module->local_syncstructure = calloc(1, sizeof(*module->local_syncstructure));
+
+		BKPAP_MSETZ(mem_map_params);
+		mem_map_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
+			UCP_MEM_MAP_PARAM_FIELD_LENGTH |
+			UCP_MEM_MAP_PARAM_FIELD_FLAGS;
+		
+		mem_map_params.address = NULL;
+		mem_map_params.length = sizeof(int64_t);
+		mem_map_params.flags = UCP_MEM_MAP_ALLOCATE | UCP_MEM_MAP_NONBLOCK;
+		status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_syncstructure->counter_mem_h);
+		_BKPAP_CHK_UCP(status);
+
+		BKPAP_MSETZ(module->local_syncstructure->counter_attr);
+		module->local_syncstructure->counter_attr.field_mask = UCP_MEM_ATTR_FIELD_LENGTH | UCP_MEM_ATTR_FIELD_ADDRESS;
+		status = ucp_mem_query(module->local_syncstructure->counter_mem_h, &module->local_syncstructure->counter_attr);
+		_BKPAP_CHK_UCP(status);
+		
+		status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->counter_mem_h, 
+			&counter_rkey_buffer, &counter_rkey_buffer_size);
+		_BKPAP_CHK_UCP(status);
+		ret = comm->c_coll->coll_bcast(&module->local_syncstructure->counter_attr.address, 1, MPI_LONG_LONG, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		ret = comm->c_coll->coll_bcast(&counter_rkey_buffer_size, 1, MPI_LONG_LONG, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		ret = comm->c_coll->coll_bcast(counter_rkey_buffer, counter_rkey_buffer_size, MPI_BYTE, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+
+		status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], counter_rkey_buffer, &module->remote_syncstructure_counter_rkey);
+		_BKPAP_CHK_UCP(status);
+		module->remote_syncstructure_counter_addr = module->local_syncstructure->counter_attr.address;
+
+
+		mem_map_params.address = NULL;
+		mem_map_params.length = sizeof(int64_t) * mpi_size;
+		mem_map_params.flags = UCP_MEM_MAP_ALLOCATE | UCP_MEM_MAP_NONBLOCK;
+		status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_syncstructure->arrival_arr_mem_h);
+		_BKPAP_CHK_UCP(status);
+		
+		BKPAP_MSETZ(module->local_syncstructure->arrival_arr_attr);
+		module->local_syncstructure->arrival_arr_attr.field_mask = UCP_MEM_ATTR_FIELD_LENGTH | UCP_MEM_ATTR_FIELD_ADDRESS; 
+		status = ucp_mem_query(module->local_syncstructure->arrival_arr_mem_h, &module->local_syncstructure->arrival_arr_attr);
+		_BKPAP_CHK_UCP(status);
+		
+		status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->arrival_arr_mem_h, 
+			&arrival_arr_rkey_buffer, &arrival_arr_rkey_buffer_size);
+		_BKPAP_CHK_UCP(status);
+		ret = comm->c_coll->coll_bcast(&module->local_syncstructure->arrival_arr_attr.address, 1, MPI_LONG_LONG, 0,
+			comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		ret = comm->c_coll->coll_bcast(&arrival_arr_rkey_buffer_size, 1, MPI_LONG_LONG, 0,
+			comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		ret = comm->c_coll->coll_bcast(arrival_arr_rkey_buffer, arrival_arr_rkey_buffer_size, MPI_BYTE, 0,
+			comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		
+		status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], arrival_arr_rkey_buffer, &module->remote_syncstructure_arrival_rkey);
+		_BKPAP_CHK_UCP(status);
+		module->remote_syncstructure_arrival_addr = module->local_syncstructure->arrival_arr_attr.address;
+
+		ucp_rkey_buffer_release(counter_rkey_buffer);
+		counter_rkey_buffer = NULL;
+		ucp_rkey_buffer_release(arrival_arr_rkey_buffer);
+		arrival_arr_rkey_buffer = NULL;
+	}else{
+		ret = comm->c_coll->coll_bcast(&module->remote_syncstructure_counter_addr, 1, MPI_LONG_LONG, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		ret = comm->c_coll->coll_bcast(&counter_rkey_buffer_size, 1, MPI_LONG_LONG, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		counter_rkey_buffer = calloc(1, counter_rkey_buffer_size);
+		_BKPAP_CHK_MALLOC(counter_rkey_buffer);
+		ret = comm->c_coll->coll_bcast(counter_rkey_buffer, counter_rkey_buffer_size, MPI_BYTE, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], counter_rkey_buffer, &module->remote_syncstructure_counter_rkey);
+		_BKPAP_CHK_UCP(status);
+		
+		ret = comm->c_coll->coll_bcast(&module->remote_syncstructure_arrival_addr, 1, MPI_LONG_LONG, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		ret = comm->c_coll->coll_bcast(&arrival_arr_rkey_buffer_size, 1, MPI_LONG_LONG, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		arrival_arr_rkey_buffer = calloc(1, arrival_arr_rkey_buffer_size);
+		_BKPAP_CHK_MALLOC(arrival_arr_rkey_buffer);
+		ret = comm->c_coll->coll_bcast(arrival_arr_rkey_buffer, arrival_arr_rkey_buffer_size, MPI_BYTE, 0, comm, comm->c_coll->coll_bcast_module);
+		_BKPAP_CHK_MPI(ret);
+		status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], arrival_arr_rkey_buffer, &module->remote_syncstructure_arrival_rkey);
+		_BKPAP_CHK_UCP(status);
+	}
+	
+	
+	BKPAP_OUTPUT("ucp syncstructure wireup SUCCESS");
+bkpap_syncstructure_wireup_err:
+	free(counter_rkey_buffer);
+	free(arrival_arr_rkey_buffer);
+	return ret;
+#undef _BKPAP_CHK_MALLOC
+#undef _BKPAP_CHK_UCP
+#undef _BKPAP_CHK_MPI
+}

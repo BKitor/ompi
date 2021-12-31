@@ -34,6 +34,14 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	mca_coll_base_module_t* module);
 
 
+// for programming/ucp_mem_map sanity, this is just
+typedef struct mca_coll_bkpap_syncstruct_t{
+	ucp_mem_h counter_mem_h;
+	ucp_mem_attr_t counter_attr;
+	ucp_mem_h arrival_arr_mem_h;
+	ucp_mem_attr_t arrival_arr_attr;
+} mca_coll_bkpap_syncstruct_t;
+
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
 	
@@ -49,8 +57,12 @@ typedef struct mca_coll_bkpap_module_t {
 
 	uint64_t *remote_postbuff_addr_arr;
 	ucp_rkey_h *remote_postbuff_rkey_arr;
-	uint64_t remote_syncstructure_addr;
-	ucp_rkey_h remote_syncstructure_rkey;
+
+	mca_coll_bkpap_syncstruct_t *local_syncstructure;
+	uint64_t remote_syncstructure_counter_addr;
+	ucp_rkey_h remote_syncstructure_counter_rkey;
+	uint64_t remote_syncstructure_arrival_addr;
+	ucp_rkey_h remote_syncstructure_arrival_rkey;
 } mca_coll_bkpap_module_t;
 
 OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);
@@ -81,7 +93,7 @@ void mca_coll_bkpap_amoreq_init(void *request);
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_remote_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_syncstructure(void);
+int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 
 END_C_DECLS
 

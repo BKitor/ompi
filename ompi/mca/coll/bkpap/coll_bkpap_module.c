@@ -17,8 +17,12 @@ static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 
 	module->remote_postbuff_addr_arr = NULL;
 	module->remote_postbuff_rkey_arr = NULL;
-	module->remote_syncstructure_addr = 0;
-	module->remote_syncstructure_rkey = NULL;
+	
+	module->local_syncstructure = NULL;
+	module->remote_syncstructure_counter_addr = 0;
+	module->remote_syncstructure_counter_rkey = NULL;
+	module->remote_syncstructure_arrival_addr = 0;
+	module->remote_syncstructure_arrival_rkey = NULL;
 }
 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
@@ -35,8 +39,24 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	}
 	free(module->remote_postbuff_rkey_arr);
 	module->remote_postbuff_addr_arr = NULL;
-	// free(remote_syncstruct_arr)
-	// ucp_rkey_destroy(remote_syncstruct_rkey)
+	
+	if(NULL != module->local_syncstructure){
+		if(NULL != module->local_syncstructure->counter_mem_h)
+			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->counter_mem_h);
+		if(NULL != module->local_syncstructure->arrival_arr_mem_h)
+			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->arrival_arr_mem_h);
+		free(module->local_syncstructure);
+		module->local_syncstructure = NULL;
+	}
+
+	if(NULL != module->remote_syncstructure_counter_rkey)
+		ucp_rkey_destroy(module->remote_syncstructure_counter_rkey);
+	module->remote_syncstructure_counter_rkey = NULL;
+	module->remote_syncstructure_counter_addr = 0;
+	if(NULL != module->remote_syncstructure_arrival_rkey)
+		ucp_rkey_destroy(module->remote_syncstructure_arrival_rkey);
+	module->remote_syncstructure_arrival_rkey = NULL;
+	module->remote_syncstructure_arrival_addr = 0;
 	
 	for (int32_t i = 0; i < module->wsize; i++) {
 		if(NULL == module->ucp_ep_arr) break;
