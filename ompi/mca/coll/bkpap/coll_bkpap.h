@@ -18,7 +18,7 @@ BEGIN_C_DECLS
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
 #define BKPAP_OUTPUT(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__)
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR"_str, ##__VA_ARGS__)
-// #define BKPAP_ERROR(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__)
+#define BKPAP_POSTBUF_SIZE (1<<26)
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
 	bool enable_mpi_threads);
@@ -40,9 +40,17 @@ typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_2_4_0_t *fallback_allreduce_module;
 	mca_coll_base_module_allreduce_fn_t fallback_allreduce;
 	
+	int32_t wsize;
+	int32_t rank; // these are saved for wiredown_ep
 	ucp_ep_h *ucp_ep_arr;
-	uint32_t wsize;
-	uint32_t rank; // these are saved for wiredown_ep
+
+	ucp_mem_h local_postbuf_h;
+	ucp_mem_attr_t local_postbuf_attrs;
+
+	uint64_t *remote_postbuff_addr_arr;
+	ucp_rkey_h *remote_postbuff_rkey_arr;
+	uint64_t remote_syncstructure_addr;
+	ucp_rkey_h remote_syncstructure_rkey;
 } mca_coll_bkpap_module_t;
 
 OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);
@@ -55,6 +63,7 @@ typedef struct mca_coll_bkpap_component_t {
 	ucp_address_t *ucp_worker_addr;
 	size_t ucp_worker_addr_len;
 
+	uint64_t postbuff_size;
 	int out_stream;
 	int priority;
 	int disabled;
@@ -69,9 +78,9 @@ typedef struct mca_coll_bkpap_amoreq_t{
 
 void mca_coll_bkpap_amoreq_init(void *request);
 
-// setup aray of endpoints for ucp communicatoins 
+int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_recievebuffers(void);
+int mca_coll_bkpap_wireup_remote_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(void);
 
 END_C_DECLS

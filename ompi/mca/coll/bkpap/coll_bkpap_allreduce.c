@@ -40,6 +40,23 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		}
 	}
 
+	if(OPAL_UNLIKELY(NULL == bkpap_module->remote_postbuff_addr_arr)) {
+		int ret = mca_coll_bkpap_wireup_remote_postbuffs(bkpap_module, comm);
+		if (OMPI_SUCCESS != ret) {
+			BKPAP_ERROR("Syncstructure Wireup Failed, fallingback");
+			goto bkpap_ar_fallback;
+		}
+	}
+	
+	// if(OPAL_UNLIKELY(NULL == bkpap_module->remote_syncstructure_addr)){
+	// 	int ret = mca_coll_bkpap_wireup_syncstructure(bkpap_module, comm);
+	// 	if (OMPI_SUCCESS != ret) {
+	// 		BKPAP_ERROR("Syncstructure Wireup Failed, fallingback");
+	// 		goto bkpap_ar_fallback;
+	// 	}
+	// }
+	
+
 	
 
 bkpap_ar_fallback:

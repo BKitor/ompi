@@ -1,7 +1,7 @@
 dist_ompidata_DATA = help-mpi-coll-bkpap.txt
 
 sources = coll_bkpap_module.c coll_bkpap_allreduce.c \
-		  coll_bkpap_component.c \
+		  coll_bkpap_component.c coll_bkpap_ucp.c \
 		  coll_bkpap.h
 
 # Make the output library in this directory, and name it either
