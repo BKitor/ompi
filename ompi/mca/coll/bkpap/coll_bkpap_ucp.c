@@ -275,7 +275,7 @@ int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct 
 
 		status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], counter_rkey_buffer, &module->remote_syncstructure_counter_rkey);
 		_BKPAP_CHK_UCP(status);
-		module->remote_syncstructure_counter_addr = module->local_syncstructure->counter_attr.address;
+		module->remote_syncstructure_counter_addr = (uint64_t) module->local_syncstructure->counter_attr.address;
 
 
 		mem_map_params.address = NULL;
@@ -304,7 +304,7 @@ int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct 
 		
 		status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], arrival_arr_rkey_buffer, &module->remote_syncstructure_arrival_rkey);
 		_BKPAP_CHK_UCP(status);
-		module->remote_syncstructure_arrival_addr = module->local_syncstructure->arrival_arr_attr.address;
+		module->remote_syncstructure_arrival_addr = (uint64_t) module->local_syncstructure->arrival_arr_attr.address;
 
 		ucp_rkey_buffer_release(counter_rkey_buffer);
 		counter_rkey_buffer = NULL;

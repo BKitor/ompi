@@ -8,7 +8,7 @@ fi
 
 # --mca coll_base_verbose 9 \
 # --mca coll ^tuned \
-make install
+# make install
 
 export OMPI_MCA_coll_base_verbose=9
 export OMPI_MCA_coll=^tuned

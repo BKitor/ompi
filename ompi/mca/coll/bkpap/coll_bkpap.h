@@ -45,7 +45,7 @@ typedef struct mca_coll_bkpap_syncstruct_t{
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
 	
-	mca_coll_base_module_2_4_0_t *fallback_allreduce_module;
+	mca_coll_base_module_t *fallback_allreduce_module;
 	mca_coll_base_module_allreduce_fn_t fallback_allreduce;
 	
 	int32_t wsize;
@@ -57,6 +57,9 @@ typedef struct mca_coll_bkpap_module_t {
 
 	uint64_t *remote_postbuff_addr_arr;
 	ucp_rkey_h *remote_postbuff_rkey_arr;
+	
+	ompi_communicator_t *inter_comm;
+	ompi_communicator_t *intra_comm;
 
 	mca_coll_bkpap_syncstruct_t *local_syncstructure;
 	uint64_t remote_syncstructure_counter_addr;
@@ -68,7 +71,7 @@ typedef struct mca_coll_bkpap_module_t {
 OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);
 
 typedef struct mca_coll_bkpap_component_t {
-	mca_coll_base_component_2_4_0_t super;
+	mca_coll_base_component_t super;
 	
 	ucp_context_h ucp_context;
 	ucp_worker_h ucp_worker;
@@ -94,6 +97,7 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_remote_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wirup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 
 END_C_DECLS
 

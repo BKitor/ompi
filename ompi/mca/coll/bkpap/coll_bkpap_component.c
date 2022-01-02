@@ -39,6 +39,8 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
     }
 #endif  /* OPAL_ENABLE_DEBUG */
 
+    // TODO: this isn't the place to do this, it's bad form to do allocations in init_query
+    // a proper solution would involve ref-counters and construction/destruction with modules
     ret = mca_coll_bkpap_init_ucx(enable_mpi_threads);
     if (OMPI_SUCCESS != ret) {
         return OMPI_ERR_NOT_SUPPORTED;
