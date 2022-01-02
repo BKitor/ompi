@@ -9,6 +9,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 							mca_coll_base_module_t* module){
 	mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
 	int ret = OMPI_SUCCESS;
+	int low_rank, hi_rank;
+	int64_t arrival_pos;
 	// if commutative, goto(fallback)
 
 
@@ -56,10 +58,34 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 			goto bkpap_ar_fallback;
 		}
 	}
+	
+	low_rank = ompi_comm_rank(bkpap_module->intra_comm);
+	hi_rank = ompi_comm_rank(comm);
+	
+	
+	// bkpap_module->intra_comm->c_coll->coll_allreduce(
+	// 		sbuf, rbuf, count, dtype, op, bkpap_module->intra_comm,
+	// 		bkpap_module->intra_comm->c_coll->coll_allreduce_module);
+	
+	ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, comm, &arrival_pos);
+	BKPAP_OUTPUT("rank %d arrived at position %ld", hi_rank, arrival_pos);
+	comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 
-	return bkpap_module->intra_comm->c_coll->coll_allreduce(
-			sbuf, rbuf, count, dtype, op, bkpap_module->intra_comm,
-			bkpap_module->intra_comm->c_coll->coll_allreduce_module);
+	if(hi_rank == 0){
+		int64_t *tmp = (int64_t*) bkpap_module->local_syncstructure->counter_attr.address;
+		*tmp = -1;
+	}
+	// bkpap_module->inter_comm->c_coll->coll_bcast(
+	// 	, count, dtype, , 
+	// 	bkpap_module->inter_comm,
+	// 	bkpap_module->inter_comm->c_coll->coll_bcast_module
+	// );
+	// bkpap_module->intra_comm->c_coll->coll_bcast(
+	// 	, count, dtype, 0, 
+	// 	bkpap_module->intra_comm,
+	// 	bkpap_module->intra_comm->c_coll->coll_bcast_module
+	// );
+
 	
 	// internode allreduce (see sm for starters, shift to Yiltan's GPU one eventualy)
 
