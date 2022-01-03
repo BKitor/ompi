@@ -13,10 +13,11 @@ fi
 export OMPI_MCA_coll_base_verbose=9
 export OMPI_MCA_coll=^tuned
 
-mpirun -n 8 \
+mpirun -n 32 \
 	--display bind \
 	$BK_OMB_DIR/collective/osu_allreduce \
-	-i 2 -x 0 -m "$((1<<20)):$((1<<23))"
-	# -i 1 -x 0 -m "$((1<<20)):$((1<<20))"
+	-i 1 -x 0 -m "$((1<<20)):$((1<<20))"
+	# -i 2 -x 0 -m "$((1<<20)):$((1<<23))"
 
+	# --mca coll_bkpap_allreduce_k_value 2 \
 	# --map-by ppr:4:package \

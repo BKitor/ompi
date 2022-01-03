@@ -26,6 +26,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .ucp_worker_addr_len = 0,
 
     .postbuff_size = BKPAP_POSTBUF_SIZE,
+    .allreduce_k_value = 4,
     .out_stream = -1,
     .priority = 30,
     .disabled = 0,
@@ -51,6 +52,11 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
 
 static int bkpap_register(void) {
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "allreduce_k_value", "Fannout of inter-node tree in allreduce",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_k_value);
+
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "priority", "Priority of the component",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.priority);
@@ -64,6 +70,6 @@ static int bkpap_register(void) {
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "postbuff_size", "Size of preposted buffer, default 64MB",
         MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.disabled);
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.postbuff_size);
     return OMPI_SUCCESS;
 }
