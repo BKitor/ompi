@@ -77,28 +77,33 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	// }
 	ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, comm, &arrival_pos);
 	// arrival_pos += 1;
-	
+
 	arrival_pos += 1;
 	// int tmp_pos = arrival_pos + 1;
 	int tmp_k = k;
 	BKPAP_OUTPUT("%ld %% %d = %ld", arrival_pos, tmp_k, arrival_pos % tmp_k);
-	while(arrival_pos % tmp_k == 0){
+	while (arrival_pos % tmp_k == 0) {
 		// poll dbell (start by doing in order, can transition to more flexible system later)
 		// local reduction
-		// update tmp_k
 		BKPAP_OUTPUT("rank %d arrive %ld recive with tmp_k %d", global_rank, arrival_pos, tmp_k);
+
 		tmp_k *= k;
-		if(tmp_k > inter_wsize) break;
-		// BKPAP_OUTPUT("%ld %% %d = %ld", arrival_pos, tmp_k, arrival_pos % tmp_k);
+		if (tmp_k > inter_wsize) break;
 	}
 
 	int send_hrank;
-	if(arrival_pos == 0){
-		BKPAP_OUTPUT("rank %d arrive %ld recive with tmp_k %d", global_rank, arrival_pos, tmp_k);
-		BKPAP_OUTPUT("Am rank 0, BCAST");	
+	if (arrival_pos == 0) {
+		if ((tmp_k / k) < global_wsize) {  // condition to do final recieve if not power of k
+			// shouldn't poll all flags, only subset
+			BKPAP_OUTPUT("rank %d arrive %ld recive with tmp_k %d", global_rank, arrival_pos, tmp_k);
+		}
+
 	}
-	else{
+	else {
 		send_hrank = arrival_pos - (arrival_pos % tmp_k);
+		// ret = mca_coll_bkpap_write_parent_postbuf(
+
+		// );
 		BKPAP_OUTPUT("rank %d arrive %ld send to %d", global_rank, arrival_pos, send_hrank);
 	}
 
@@ -112,7 +117,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	// 	bkpap_module->inter_comm,
 	// 	bkpap_module->inter_comm->c_coll->coll_bcast_module
 	// );
-	
+
 	// intranode bcast
 	// bkpap_module->intra_comm->c_coll->coll_bcast(
 	// 	, count, dtype, 0, 

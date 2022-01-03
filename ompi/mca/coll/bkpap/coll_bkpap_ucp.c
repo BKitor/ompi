@@ -402,3 +402,17 @@ int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_
 	}
 	return OMPI_SUCCESS;
 }
+
+// translate parent rank to the arrived rank, put the local_reduction_buffer in parent memory, and ring doorbell
+// int	mca_coll_bkpap_write_parent_postbuf(mca_coll_bkpap_module_t* module, int parent_rank, void* local_recution_buffer){
+// 	ucp_request_param_t get_params;
+
+// 	atomic_op_params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
+// 		UCP_OP_ATTR_FIELD_DATATYPE;
+// 	atomic_op_params.cb.send = _bk_send_cb;
+// 	atomic_op_params.datatype = ucp_dt_make_contig(8);
+
+// 	ucp_get_nbx(
+// 		module->ucp_ep_arr[0], remote_, 
+// 	);
+// }
