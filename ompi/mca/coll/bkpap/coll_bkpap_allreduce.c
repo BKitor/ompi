@@ -34,7 +34,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		}
 	}
 
-	if (OPAL_UNLIKELY(NULL == bkpap_module->remote_postbuff_addr_arr || NULL == bkpap_module->remote_postbuff_rkey_arr)) {
+	if (OPAL_UNLIKELY(NULL == bkpap_module->remote_pbuffs.dbell_addr_arr || NULL == bkpap_module->remote_pbuffs.dbell_addr_arr 
+		|| NULL == bkpap_module->remote_pbuffs.buffer_addr_arr || NULL == bkpap_module->remote_pbuffs.buffer_addr_arr)) {
 		ret = mca_coll_bkpap_wireup_remote_postbuffs(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
@@ -54,7 +55,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	// check if intrandode communicator exists
 
 	if (OPAL_UNLIKELY(NULL == bkpap_module->intra_comm || NULL == bkpap_module->inter_comm)) {
-		ret = mca_coll_bkpap_wirup_hier_comms(bkpap_module, comm);
+		ret = mca_coll_bkpap_wireup_hier_comms(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("inter/intra communicator creation failed");
 			goto bkpap_ar_fallback;
