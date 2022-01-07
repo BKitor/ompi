@@ -27,8 +27,8 @@ static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 	module->local_syncstructure = NULL;
 	module->remote_syncstructure_counter_addr = 0;
 	module->remote_syncstructure_counter_rkey = NULL;
-	module->remote_syncstructure_arrival_addr = 0;
-	module->remote_syncstructure_arrival_rkey = NULL;
+	module->remote_syncstructure_arrival_arr_addr = 0;
+	module->remote_syncstructure_arrival_arr_rkey = NULL;
 
 	module->inter_comm = NULL;
 	module->intra_comm = NULL;
@@ -85,10 +85,10 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 		ucp_rkey_destroy(module->remote_syncstructure_counter_rkey);
 	module->remote_syncstructure_counter_rkey = NULL;
 	module->remote_syncstructure_counter_addr = 0;
-	if (NULL != module->remote_syncstructure_arrival_rkey)
-		ucp_rkey_destroy(module->remote_syncstructure_arrival_rkey);
-	module->remote_syncstructure_arrival_rkey = NULL;
-	module->remote_syncstructure_arrival_addr = 0;
+	if (NULL != module->remote_syncstructure_arrival_arr_rkey)
+		ucp_rkey_destroy(module->remote_syncstructure_arrival_arr_rkey);
+	module->remote_syncstructure_arrival_arr_rkey = NULL;
+	module->remote_syncstructure_arrival_arr_addr = 0;
 
 	for (int32_t i = 0; i < module->wsize; i++) {
 		if (NULL == module->ucp_ep_arr) break;
