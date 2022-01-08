@@ -22,7 +22,7 @@ mpirun -n 4 \
 	--display bind \
 	$BK_OMB_DIR/collective/osu_allreduce \
 	-i 1 -x 0 -m "$BK_PBUF_SIZE:$BK_PBUF_SIZE"
-	# -i 2 -x 0 -m "$((1<<20)):$((1<<23))"
+	# -i 2 -x 1 -m "$((1<<20)):$((1<<23))"
 
 	# --map-by :OVERSUBSCRIBE \
 	# --mca coll_bkpap_allreduce_k_value 2 \

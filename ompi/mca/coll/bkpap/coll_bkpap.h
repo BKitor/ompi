@@ -59,10 +59,11 @@ typedef struct mca_coll_bkpap_module_t {
 	int32_t rank; // these are saved for wiredown_ep
 	ucp_ep_h* ucp_ep_arr;
 
-	// void* , postbuff_size * mpi_size
+	//TODO: fix to be (k-1) * log_k(mpi_wsize)
+	// void* , postbuff_size * (k - 1)
 	ucp_mem_h local_postbuf_h;
 	ucp_mem_attr_t local_postbuf_attrs;
-	// int64_t*, sizeof(int64_t) * mpi_size
+	// int64_t*, sizeof(int64_t) * (k - 1) 
 	ucp_mem_h local_dbell_h;
 	ucp_mem_attr_t local_dbell_attrs;
 
@@ -113,10 +114,10 @@ int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_
 
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, struct ompi_communicator_t *comm, int* rank);
 int mca_coll_bkpap_write_parent_postbuf(const void *buf, 
-										struct ompi_datatype_t *dtype, int count, int64_t arrival, int send_rank,
+										struct ompi_datatype_t *dtype, int count, int64_t arrival, int radix, int send_rank,
 										struct ompi_communicator_t *comm, mca_coll_bkpap_module_t *module);
 
-int mca_coll_bkpap_reduce_postbufs(struct ompi_communicator_t* comm, mca_coll_bkpap_module_t *module);
+int mca_coll_bkpap_reduce_postbufs(struct ompi_datatype_t *dtype, int count, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t *module);
 END_C_DECLS
 
 #endif

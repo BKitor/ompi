@@ -62,13 +62,14 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		}
 	}
 
+	int global_rank = ompi_comm_rank(comm);
+	int global_wsize = ompi_comm_size(comm);
 	int intra_rank = ompi_comm_rank(bkpap_module->intra_comm);
 	// inter_wsize = ompi_comm_size(bkpap_module->inter_comm);
 	// inter_rank = ompi_comm_rank(bkpap_module->inter_comm);
-	int inter_wsize = ompi_comm_size(comm); // TODO: fix when multi-node
-	int inter_rank = ompi_comm_rank(comm); // TODO: fix when multi-node
-	int global_rank = ompi_comm_rank(comm);
-	int global_wsize = ompi_comm_size(comm);
+	#warning inter_wsize/inter_rank are set to global, fix for multi-node test
+	int inter_wsize = global_wsize; // TODO: fix when multi-node 
+	int inter_rank = global_rank; // TODO: fix when multi-node
 
 
 	// bkpap_module->intra_comm->c_coll->coll_allreduce(
@@ -78,6 +79,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	// if (low_rank == 0){
 
 	// }
+	
 
 	ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, comm, &arrival_pos);
 	arrival_pos += 1;
@@ -92,17 +94,19 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
 	int tmp_k = k;
 	while (arrival_pos % tmp_k == 0) {
-		BKPAP_OUTPUT("rank %d arrive %ld recive with tmp_k %d", global_rank, arrival_pos, tmp_k);
-		mca_coll_bkpap_reduce_postbufs(comm, bkpap_module);
+		int num_buffers =(k-1); 
+		BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
+		mca_coll_bkpap_reduce_postbufs(dtype, count, num_buffers, comm, bkpap_module);
 
 		tmp_k *= k;
 		if (tmp_k > inter_wsize) break;
 	}
 
 	if (arrival_pos == 0) {
-		if ((tmp_k / k) < global_wsize) {  // condition to do final recieve if not power of k
-			BKPAP_OUTPUT("rank %d arrive %ld recive with tmp_k %d", global_rank, arrival_pos, tmp_k);
-			mca_coll_bkpap_reduce_postbufs(comm, bkpap_module);
+		if ((tmp_k / k) < inter_wsize) {  // condition to do final recieve if not power of k
+			int num_buffers = 1; // TODO: fix to that it will work for different K values, this only works for k=4
+			BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
+			mca_coll_bkpap_reduce_postbufs(dtype, count, num_buffers, comm, bkpap_module);
 		}
 	}
 	else {
@@ -111,15 +115,10 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		send_arrival_pos = arrival_pos - (arrival_pos % tmp_k);
 		while(-1 == send_hrank){
 			mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, bkpap_module, comm, &send_hrank);
-			if(-1 == send_hrank){
-				BKPAP_OUTPUT("rank %d translated pos %d to -1, trying again", inter_rank, send_arrival_pos);
-				// sleep(2);
-			}
-
 		}
 		
 		BKPAP_OUTPUT("rank %d arrive %ld send to pos %d (rank %d)", global_rank, arrival_pos, send_arrival_pos, send_hrank);
-		ret = mca_coll_bkpap_write_parent_postbuf(sbuf, dtype, count, arrival_pos, send_hrank, comm, bkpap_module);
+		ret = mca_coll_bkpap_write_parent_postbuf(sbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
 	}
 
 	// internode bcast
@@ -135,7 +134,6 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	// 	bkpap_module->intra_comm,
 	// 	bkpap_module->intra_comm->c_coll->coll_bcast_module
 	// );
-
 
 	// internode allreduce (see sm for starters, shift to Yiltan's GPU one eventualy)
 

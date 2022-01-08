@@ -34,6 +34,8 @@ static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 	module->intra_comm = NULL;
 }
 
+// TODO: Fix issue of hanging on ucp_ep_destroy()
+// started after transitioning postbuf size from (postbuf_size * k) to (postbuf_size * (k-1)) 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 
 	if (NULL != module->intra_comm) {
@@ -43,13 +45,6 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	if (NULL != module->inter_comm) {
 		ompi_comm_free(&(module->inter_comm));
 		module->inter_comm = NULL;
-	}
-
-	if (NULL != module->local_postbuf_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_postbuf_h);
-	}
-	if (NULL != module->local_dbell_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_dbell_h);
 	}
 
 	for (int i = 0; i < module->wsize; i++) {
@@ -71,6 +66,15 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	module->remote_pbuffs.buffer_rkey_arr = NULL;
 	free(module->remote_pbuffs.buffer_addr_arr);
 	module->remote_pbuffs.buffer_addr_arr = NULL;
+
+	if (NULL != module->local_postbuf_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_postbuf_h);
+	}
+	module->local_postbuf_h = NULL;
+	if (NULL != module->local_dbell_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_dbell_h);
+	}
+	module->local_dbell_h = NULL;
 
 	if (NULL != module->local_syncstructure) {
 		if (NULL != module->local_syncstructure->counter_mem_h)
