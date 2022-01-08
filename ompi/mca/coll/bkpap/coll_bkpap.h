@@ -47,7 +47,7 @@ typedef struct mca_coll_bkpap_remote_pbuffs_t {
 	uint64_t* dbell_addr_arr;
 	ucp_rkey_h* buffer_rkey_arr;// mpi_wsize array of postbuf-sized buffers for each rank
 	uint64_t* buffer_addr_arr;
-} mca_coll_bkpap_remote_pbuffs_t ;
+} mca_coll_bkpap_remote_pbuffs_t;
 
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
@@ -112,12 +112,12 @@ int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct 
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int64_t* ret_pos); // can drop the 'comm' param
 
-int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, struct ompi_communicator_t *comm, int* rank);
-int mca_coll_bkpap_write_parent_postbuf(const void *buf, 
-										struct ompi_datatype_t *dtype, int count, int64_t arrival, int radix, int send_rank,
-										struct ompi_communicator_t *comm, mca_coll_bkpap_module_t *module);
+int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int* rank);
+int mca_coll_bkpap_write_parent_postbuf(const void* buf,
+	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
+	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_reduce_postbufs(struct ompi_datatype_t *dtype, int count, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t *module);
+int mca_coll_bkpap_reduce_postbufs(struct ompi_datatype_t* dtype, int count, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 END_C_DECLS
 
 #endif

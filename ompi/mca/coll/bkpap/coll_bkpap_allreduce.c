@@ -34,7 +34,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		}
 	}
 
-	if (OPAL_UNLIKELY(NULL == bkpap_module->remote_pbuffs.dbell_addr_arr || NULL == bkpap_module->remote_pbuffs.dbell_addr_arr 
+	if (OPAL_UNLIKELY(NULL == bkpap_module->remote_pbuffs.dbell_addr_arr || NULL == bkpap_module->remote_pbuffs.dbell_addr_arr
 		|| NULL == bkpap_module->remote_pbuffs.buffer_addr_arr || NULL == bkpap_module->remote_pbuffs.buffer_addr_arr)) {
 		ret = mca_coll_bkpap_wireup_postbuffs(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
@@ -67,8 +67,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	int intra_rank = ompi_comm_rank(bkpap_module->intra_comm);
 	// inter_wsize = ompi_comm_size(bkpap_module->inter_comm);
 	// inter_rank = ompi_comm_rank(bkpap_module->inter_comm);
-	#warning inter_wsize/inter_rank are set to global, fix for multi-node test
-	int inter_wsize = global_wsize; // TODO: fix when multi-node 
+	#warning inter_wsize / inter_rank are set to global, fix for multi - node test
+		int inter_wsize = global_wsize; // TODO: fix when multi-node 
 	int inter_rank = global_rank; // TODO: fix when multi-node
 
 
@@ -79,7 +79,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	// if (low_rank == 0){
 
 	// }
-	
+
 
 	ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, comm, &arrival_pos);
 	arrival_pos += 1;
@@ -94,7 +94,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
 	int tmp_k = k;
 	while (arrival_pos % tmp_k == 0) {
-		int num_buffers =(k-1); 
+		int num_buffers = (k - 1);
 		BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
 		mca_coll_bkpap_reduce_postbufs(dtype, count, num_buffers, comm, bkpap_module);
 
@@ -113,10 +113,10 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		int send_arrival_pos;
 		int send_hrank = -1;
 		send_arrival_pos = arrival_pos - (arrival_pos % tmp_k);
-		while(-1 == send_hrank){
+		while (-1 == send_hrank) {
 			mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, bkpap_module, comm, &send_hrank);
 		}
-		
+
 		BKPAP_OUTPUT("rank %d arrive %ld send to pos %d (rank %d)", global_rank, arrival_pos, send_arrival_pos, send_hrank);
 		ret = mca_coll_bkpap_write_parent_postbuf(sbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
 	}
@@ -148,7 +148,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		int64_t* tmp = (int64_t*)bkpap_module->local_syncstructure->counter_attr.address;
 		*tmp = -1;
 		tmp = (int64_t*)bkpap_module->local_syncstructure->arrival_arr_attr.address;
-		for(int i = 0; i<global_wsize; i++)
+		for (int i = 0; i < global_wsize; i++)
 			tmp[i] = -1;
 	}
 
