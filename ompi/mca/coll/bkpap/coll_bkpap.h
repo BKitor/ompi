@@ -6,10 +6,11 @@
 
 #include "opal/class/opal_object.h"
 
+#include "ompi/communicator/communicator.h"
 #include "ompi/mca/mca.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
-#include "ompi/communicator/communicator.h"
+#include "ompi/op/op.h"
 
 #include <ucp/api/ucp.h>
 
@@ -19,6 +20,11 @@ BEGIN_C_DECLS
 #define BKPAP_OUTPUT(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__)
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
 #define BKPAP_POSTBUF_SIZE (1<<26)
+
+enum mca_coll_bkpap_dbell_state{
+	BKPAP_DBELL_UNSET = -1,
+	BKPAP_DBELL_SET = 1,
+};
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
 	bool enable_mpi_threads);
@@ -117,7 +123,7 @@ int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
 	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_reduce_postbufs(struct ompi_datatype_t* dtype, int count, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t *op, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 END_C_DECLS
 
 #endif

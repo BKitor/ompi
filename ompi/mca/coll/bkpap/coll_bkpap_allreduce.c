@@ -2,7 +2,7 @@
 
 #include "coll_bkpap.h"
 #include "ompi/mca/coll/base/coll_base_functions.h"
-
+#include "ompi/op/op.h"
 
 int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	struct ompi_datatype_t* dtype,
@@ -13,8 +13,21 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	int ret = OMPI_SUCCESS;
 	int k = mca_coll_bkpap_component.allreduce_k_value;
 	int64_t arrival_pos;
-	// if commutative, goto(fallback)
 
+	if (!ompi_op_is_commute(op)){
+		BKPAP_ERROR("Commutative operation, going to fallback");
+		goto bkpap_ar_fallback;
+	}
+
+	// if IN_PLACE, rbuf is local contents, and will be used as local buffer 
+	// if not IN_PLACE, copy sbuf into rbuf
+	if (MPI_IN_PLACE != sbuf){
+		ret = ompi_datatype_copy_content_same_ddt(dtype, count, rbuf, (char*)sbuf);
+		if(ret != OMPI_SUCCESS){
+			BKPAP_ERROR("Not in place memcpy failed, falling back");
+			goto bkpap_ar_fallback;
+		}
+	}
 
 	// global rank 0 has the dstructure
 	// rank 0 of each inter-communicator is a leader
@@ -28,6 +41,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
 	if (OPAL_UNLIKELY(NULL == bkpap_module->ucp_ep_arr)) {
 		ret = mca_coll_bkpap_wireup_endpoints(bkpap_module, comm);
+		comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("Endpoint Wireup Failed, fallingback");
 			goto bkpap_ar_fallback;
@@ -37,6 +51,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	if (OPAL_UNLIKELY(NULL == bkpap_module->remote_pbuffs.dbell_addr_arr || NULL == bkpap_module->remote_pbuffs.dbell_addr_arr
 		|| NULL == bkpap_module->remote_pbuffs.buffer_addr_arr || NULL == bkpap_module->remote_pbuffs.buffer_addr_arr)) {
 		ret = mca_coll_bkpap_wireup_postbuffs(bkpap_module, comm);
+		comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
 			goto bkpap_ar_fallback;
@@ -46,6 +61,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	if (OPAL_UNLIKELY(NULL == bkpap_module->remote_syncstructure_arrival_arr_rkey || NULL == bkpap_module->remote_syncstructure_counter_rkey
 		|| 0 == bkpap_module->remote_syncstructure_counter_addr || 0 == bkpap_module->remote_syncstructure_arrival_arr_addr)) {
 		ret = mca_coll_bkpap_wireup_syncstructure(bkpap_module, comm);
+		comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("Syncstructure Wireup Failed, fallingback");
 			goto bkpap_ar_fallback;
@@ -83,20 +99,14 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
 	ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, comm, &arrival_pos);
 	arrival_pos += 1;
-	// BKPAP_OUTPUT("rank %d arrive %ld", inter_rank, arrival_pos);
+	BKPAP_OUTPUT("rank %d arrive %ld start val: %x", inter_rank, arrival_pos, ((int*)rbuf)[0]);
 	// comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
-	// if(inter_rank == 0){
-	// 	int64_t *_bk_tmp = (int64_t*)bkpap_module->local_syncstructure->arrival_arr_attr.address;
-	// 	BKPAP_OUTPUT("ss arr [%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld]",
-	// 		_bk_tmp[0], _bk_tmp[1], _bk_tmp[2], _bk_tmp[3], _bk_tmp[4], _bk_tmp[5], _bk_tmp[6], _bk_tmp[7],
-	// 		_bk_tmp[8], _bk_tmp[9], _bk_tmp[10], _bk_tmp[11], _bk_tmp[12], _bk_tmp[13], _bk_tmp[14], _bk_tmp[15]);
-	// }
 
 	int tmp_k = k;
 	while (arrival_pos % tmp_k == 0) {
 		int num_buffers = (k - 1);
-		BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
-		mca_coll_bkpap_reduce_postbufs(dtype, count, num_buffers, comm, bkpap_module);
+		// BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
+		mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, comm, bkpap_module);
 
 		tmp_k *= k;
 		if (tmp_k > inter_wsize) break;
@@ -105,8 +115,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	if (arrival_pos == 0) {
 		if ((tmp_k / k) < inter_wsize) {  // condition to do final recieve if not power of k
 			int num_buffers = 1; // TODO: fix to that it will work for different K values, this only works for k=4
-			BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
-			mca_coll_bkpap_reduce_postbufs(dtype, count, num_buffers, comm, bkpap_module);
+			// BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
+			mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, comm, bkpap_module);
 		}
 	}
 	else {
@@ -114,34 +124,42 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		int send_hrank = -1;
 		send_arrival_pos = arrival_pos - (arrival_pos % tmp_k);
 		while (-1 == send_hrank) {
-			mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, bkpap_module, comm, &send_hrank);
+			ret = mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, bkpap_module, comm, &send_hrank);
+			// TODO: Errorchecking :(
 		}
 
-		BKPAP_OUTPUT("rank %d arrive %ld send to pos %d (rank %d)", global_rank, arrival_pos, send_arrival_pos, send_hrank);
-		ret = mca_coll_bkpap_write_parent_postbuf(sbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
+		// BKPAP_OUTPUT("rank %d arrive %ld send to pos %d (rank %d)", global_rank, arrival_pos, send_arrival_pos, send_hrank);
+		ret = mca_coll_bkpap_write_parent_postbuf(rbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
 	}
 
 	// internode bcast
-	// bkpap_module->inter_comm->c_coll->coll_bcast(
-	// 	, count, dtype, , 
+	int root = -1;
+	while(-1 == root)
+		ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, comm, &root);
+		// TODO: Errorchecking :(
+
+
+	#warning switch from global-comm to inter-comm 
+	// ret = bkpap_module->inter_comm->c_coll->coll_bcast(
+	// 	rbuf, count, dtype, root, 
 	// 	bkpap_module->inter_comm,
 	// 	bkpap_module->inter_comm->c_coll->coll_bcast_module
 	// );
-
+	ret = comm->c_coll->coll_bcast(
+		rbuf, count, dtype, root, 
+		comm,
+		comm->c_coll->coll_bcast_module
+	);
+	if(ret != OMPI_SUCCESS){
+		BKPAP_ERROR("'inter-stage' bcast failed");
+		return ret;
+	}
 	// intranode bcast
 	// bkpap_module->intra_comm->c_coll->coll_bcast(
-	// 	, count, dtype, 0, 
+	// 	rbuf, count, dtype, 0, 
 	// 	bkpap_module->intra_comm,
 	// 	bkpap_module->intra_comm->c_coll->coll_bcast_module
 	// );
-
-	// internode allreduce (see sm for starters, shift to Yiltan's GPU one eventualy)
-
-	// atomic_fadd into counter of remote structure
-	// depending on arrival position, calc parrents
-	// 	if not first in section, send to parent (direct alg) 
-	// 	if first in section, figure out how to recieve and reduce
-	//	repeat to go upp the tree
 
 	comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 	if (global_rank == 0) {
@@ -151,11 +169,11 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 		for (int i = 0; i < global_wsize; i++)
 			tmp[i] = -1;
 	}
+	
+	BKPAP_OUTPUT("rank %d returning first val %x BKPAP ALLREDUCE SUCCESSFULL", global_rank, ((int*)rbuf)[0]);
+	return OMPI_SUCCESS;
 
 bkpap_ar_fallback:
-	// return ompi_coll_base_allreduce_intra_basic_linear(
-	// 	sbuf, rbuf, count, dtype, op, comm,
-	// 	bkpap_module->fallback_allreduce_module);
 
 	return bkpap_module->fallback_allreduce(
 		sbuf, rbuf, count, dtype, op, comm,

@@ -40,7 +40,25 @@ static inline ucs_status_t _bk_poll_completion(ucs_status_ptr_t status_ptr) {
 	ucp_request_free(status_ptr);
 	return status;
 }
+static void _empty_func(void*req, ucs_status_t stat){}
 
+static ucs_status_t _bk_flush_ep(ucp_ep_h ep){
+	void* req = ucp_ep_flush_nb(ep, 0, _empty_func);
+	if(req == NULL){
+		return UCS_OK;
+	}else if(UCS_PTR_IS_ERR(req)){
+		return UCS_PTR_STATUS(req);
+	}else{
+		ucs_status_t status;
+		do{
+			ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+			status = ucp_request_check_status(req);
+		}while(status == UCS_INPROGRESS);
+		ucp_request_free(req);
+		return status;
+	}
+	
+}
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 #define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_init_ucp_err;}
@@ -219,8 +237,8 @@ int mca_coll_bkpap_wireup_postbuffs(mca_coll_bkpap_module_t* module, struct ompi
 	status = ucp_mem_query(module->local_dbell_h, &module->local_dbell_attrs);
 	_BKPAP_CHK_UCP(status);
 	int64_t* dbells = module->local_dbell_attrs.address;
-	for (int i = 0; i < mca_coll_bkpap_component.allreduce_k_value; i++)
-		dbells[i] = -1;
+	for (int i = 0; i < (mca_coll_bkpap_component.allreduce_k_value-1); i++)
+		dbells[i] = BKPAP_DBELL_UNSET;
 	dbells = NULL;
 
 
@@ -454,26 +472,21 @@ bkpap_syncstructure_wireup_err:
 
 
 int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int64_t* ret_pos) {
+	#define _BKPAP_CHK_UCS_STATUS_PTR(_ptr) if(UCS_PTR_IS_ERR(_ptr)){BKPAP_ERROR("ucp function returned error"); return OMPI_ERROR;}
 	ucs_status_ptr_t status_ptr = NULL;
 	ucs_status_t status = OMPI_SUCCESS;
-	uint64_t op_buf = 1, reply_buf = -1, put_buf = ompi_comm_rank(comm);
-	ucp_request_param_t atomic_op_params;
-	BKPAP_MSETZ(atomic_op_params);
-
-	atomic_op_params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
-		UCP_OP_ATTR_FIELD_DATATYPE |
-		UCP_OP_ATTR_FIELD_REPLY_BUFFER;
-	atomic_op_params.cb.send = _bk_send_cb_args;
-	atomic_op_params.datatype = ucp_dt_make_contig(8);
-	atomic_op_params.reply_buffer = &reply_buf;
+	int64_t reply_buf = -1, put_buf = ompi_comm_rank(comm);
 
 	// TODO: Could try to be hardcore and move the arrival_arr put into the counter_fadd callback 
 
-	status_ptr = ucp_atomic_op_nbx(
-		module->ucp_ep_arr[0], UCP_ATOMIC_OP_ADD, &op_buf, 1,
+	status_ptr = ucp_atomic_fetch_nb(
+		module->ucp_ep_arr[0], UCP_ATOMIC_FETCH_OP_FADD, 1, &reply_buf, sizeof(reply_buf), 
 		module->remote_syncstructure_counter_addr, module->remote_syncstructure_counter_rkey,
-		&atomic_op_params);
+		_bk_send_cb);
 	status = _bk_poll_completion(status_ptr);
+	// _BKPAP_CHK_UCS_STATUS_PTR(status_ptr);
+	// if(UCS_OK != status_ptr)
+		// status = _bk_flush_ep(module->ucp_ep_arr[0]);
 	if (status != UCS_OK) {
 		BKPAP_ERROR("inter UCS check failed: %d (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
@@ -484,7 +497,10 @@ int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_
 		module->ucp_ep_arr[0], &put_buf, sizeof(put_buf),
 		put_addr, module->remote_syncstructure_arrival_arr_rkey,
 		_bk_send_cb);
+	// _BKPAP_CHK_UCS_STATUS_PTR(status_ptr);
 	status = _bk_poll_completion(status_ptr);
+	// if(UCS_OK != status_ptr)
+	// status = _bk_flush_ep(module->ucp_ep_arr[0]);
 	if (status != UCS_OK) {
 		BKPAP_ERROR("inter UCS check failed: %d (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
@@ -492,28 +508,33 @@ int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_
 
 	*ret_pos = reply_buf;
 	return OMPI_SUCCESS;
+	#undef _BKPAP_CHK_UCS_STATUS_PTR
 }
 
 // poll doobell for each potbuf, read the buffer and local reduce 
 	// poll dbell (start by doing in order, can transition to more flexible system later)
 	// local reduction
-int mca_coll_bkpap_reduce_postbufs(struct ompi_datatype_t* dtype, int count, int num_buffers,
+int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t *op, int num_buffers,
 	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
 	int ret = OMPI_SUCCESS;
 	int rank = ompi_comm_rank(comm);
 	volatile int64_t* dbells = module->local_dbell_attrs.address;
-	volatile uint8_t* pbuffs = module->local_postbuf_attrs.address;
+	uint8_t* pbuffs = module->local_postbuf_attrs.address;
 	size_t dtype_size;
 	ompi_datatype_type_size(dtype, &dtype_size);
-	size_t pbuff_size = count * dtype_size;
 
 	for (int i = 0; i < num_buffers; i++) {
-		while (-1 == dbells[i]);
-		BKPAP_OUTPUT("rank %d, i [%d] dbells set to [%ld %ld %ld] postbufs = [%lx %lx %lx]", rank, i,
-			dbells[0], dbells[1], dbells[2],
-			*(uint64_t*)(pbuffs + (0 * mca_coll_bkpap_component.postbuff_size)),
-			*(uint64_t*)(pbuffs + (1 * mca_coll_bkpap_component.postbuff_size)),
-			*(uint64_t*)(pbuffs + (2 * mca_coll_bkpap_component.postbuff_size)));
+		while (BKPAP_DBELL_SET != dbells[i])ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+		// BKPAP_OUTPUT("rank %d, i [%d] dbells set to [%ld %ld %ld] postbufs = [%lx %lx %lx]", rank, i,
+		// 	dbells[0], dbells[1], dbells[2],
+		// 	*(uint64_t*)(pbuffs + (0 * mca_coll_bkpap_component.postbuff_size)),
+		// 	*(uint64_t*)(pbuffs + (1 * mca_coll_bkpap_component.postbuff_size)),
+		// 	*(uint64_t*)(pbuffs + (2 * mca_coll_bkpap_component.postbuff_size)));
+		void* recived_buffer = pbuffs + (i * mca_coll_bkpap_component.postbuff_size);
+		BKPAP_OUTPUT("Reducing %x into %x", ((int*)recived_buffer )[0], ((int*)local_buf)[0]);
+		ompi_op_reduce(op, recived_buffer,
+			local_buf, count, dtype);
+		dbells[i] = BKPAP_DBELL_UNSET;
 	}
 	BKPAP_OUTPUT("rank %d, REDUCE", rank);
 
@@ -549,7 +570,7 @@ int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 	ucs_status_t status;
 	ucs_status_ptr_t status_ptr;
 	int ret = OMPI_SUCCESS;
-	int64_t put_buf = 1;
+	int64_t dbell_put_buf = BKPAP_DBELL_SET;
 	uint64_t postbuf_addr;
 	size_t dtype_size, buf_size;
 	ucp_request_param_t put_params;
@@ -563,20 +584,25 @@ int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 
 	int slot = ((arrival / (radix / k)) % k) - 1;
 
-	BKPAP_OUTPUT("Rank %d arrive %ld radix %d writing to proc %d in slot %d", ompi_comm_rank(comm), arrival, radix, send_rank, slot);
+	// BKPAP_OUTPUT("Rank %d arrive %ld radix %d writing to proc %d in slot %d", ompi_comm_rank(comm), arrival, radix, send_rank, slot);
 
 	postbuf_addr = (module->remote_pbuffs.buffer_addr_arr[send_rank]) + (slot * mca_coll_bkpap_component.postbuff_size);
 	ompi_datatype_type_size(dtype, &dtype_size);
 	buf_size = dtype_size * (ptrdiff_t)count;
-	ucp_put_nb(
+	status_ptr = ucp_put_nb(
 		module->ucp_ep_arr[send_rank], buf, buf_size,
 		postbuf_addr,
 		module->remote_pbuffs.buffer_rkey_arr[send_rank],
 		_bk_send_cb);
+	status = _bk_poll_completion(status_ptr);
+	if (UCS_OK != status) {
+		BKPAP_ERROR("rank %d (arrive %ld) Write patent postbuf returned error %d (%s)", ompi_comm_rank(comm), arrival, UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
+		return OMPI_ERROR;
+	}
 
 	uint64_t dbell_addr = (module->remote_pbuffs.dbell_addr_arr[send_rank]) + (slot * sizeof(uint64_t));
 	status_ptr = ucp_put_nb(
-		module->ucp_ep_arr[send_rank], &put_buf, sizeof(put_buf),
+		module->ucp_ep_arr[send_rank], &dbell_put_buf, sizeof(dbell_put_buf),
 		dbell_addr,
 		module->remote_pbuffs.dbell_rkey_arr[send_rank],
 		_bk_send_cb);
