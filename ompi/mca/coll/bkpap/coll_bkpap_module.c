@@ -3,78 +3,20 @@
 #include "opal/util/show_help.h"
 
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
-	module->fallback_allreduce = NULL;
-	module->fallback_allreduce_module = NULL;
-
-	module->wsize = -1;
-	module->rank = -1;
-	module->ucp_ep_arr = NULL;
-
-	module->local_postbuf_h = NULL;
-	module->local_postbuf_attrs.address = NULL;
-	module->local_postbuf_attrs.field_mask = 0;
-	module->local_postbuf_attrs.length = -1;
-	module->local_dbell_h = NULL;
-	module->local_dbell_attrs.address = NULL;
-	module->local_dbell_attrs.field_mask = 0;
-	module->local_dbell_attrs.length = -1;
-
-	module->remote_pbuffs.dbell_rkey_arr = NULL;
-	module->remote_pbuffs.dbell_addr_arr = NULL;
-	module->remote_pbuffs.buffer_rkey_arr = NULL;
-	module->remote_pbuffs.buffer_addr_arr = NULL;
-
-	module->local_syncstructure = NULL;
-	module->remote_syncstructure_counter_addr = 0;
-	module->remote_syncstructure_counter_rkey = NULL;
-	module->remote_syncstructure_arrival_arr_addr = 0;
-	module->remote_syncstructure_arrival_arr_rkey = NULL;
-
-	module->inter_comm = NULL;
-	module->intra_comm = NULL;
+	memset(&(module->endof_super), 0, sizeof(*module) - sizeof(module->super));
 }
 
 // TODO: Fix issue of hanging on ucp_ep_destroy()
 // started after transitioning postbuf size from (postbuf_size * k) to (postbuf_size * (k-1)) 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
-
-	if (NULL != module->intra_comm) {
-		ompi_comm_free(&(module->intra_comm));
-		module->intra_comm = NULL;
-	}
-	if (NULL != module->inter_comm) {
-		ompi_comm_free(&(module->inter_comm));
-		module->inter_comm = NULL;
-	}
-
-	for (int i = 0; i < module->wsize; i++) {
-		if (NULL == module->remote_pbuffs.dbell_rkey_arr)break;
-		if (NULL == module->remote_pbuffs.dbell_rkey_arr[i]) continue;
-		ucp_rkey_destroy(module->remote_pbuffs.dbell_rkey_arr[i]);
-	}
-	free(module->remote_pbuffs.dbell_rkey_arr);
-	module->remote_pbuffs.dbell_rkey_arr = NULL;
-	free(module->remote_pbuffs.dbell_addr_arr);
-	module->remote_pbuffs.dbell_addr_arr = NULL;
-
-	for (int i = 0; i < module->wsize; i++) {
-		if (NULL == module->remote_pbuffs.buffer_rkey_arr)break;
-		if (NULL == module->remote_pbuffs.buffer_rkey_arr[i])continue;
-		ucp_rkey_destroy(module->remote_pbuffs.buffer_rkey_arr[i]);
-	}
-	free(module->remote_pbuffs.buffer_rkey_arr);
-	module->remote_pbuffs.buffer_rkey_arr = NULL;
-	free(module->remote_pbuffs.buffer_addr_arr);
-	module->remote_pbuffs.buffer_addr_arr = NULL;
-
-	if (NULL != module->local_postbuf_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_postbuf_h);
-	}
-	module->local_postbuf_h = NULL;
-	if (NULL != module->local_dbell_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_dbell_h);
-	}
-	module->local_dbell_h = NULL;
+	if (NULL != module->remote_syncstructure_arrival_arr_rkey)
+		ucp_rkey_destroy(module->remote_syncstructure_arrival_arr_rkey);
+	module->remote_syncstructure_arrival_arr_rkey = NULL;
+	module->remote_syncstructure_arrival_arr_addr = 0;
+	if (NULL != module->remote_syncstructure_counter_rkey)
+		ucp_rkey_destroy(module->remote_syncstructure_counter_rkey);
+	module->remote_syncstructure_counter_rkey = NULL;
+	module->remote_syncstructure_counter_addr = 0;
 
 	if (NULL != module->local_syncstructure) {
 		if (NULL != module->local_syncstructure->counter_mem_h)
@@ -85,14 +27,35 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 		module->local_syncstructure = NULL;
 	}
 
-	if (NULL != module->remote_syncstructure_counter_rkey)
-		ucp_rkey_destroy(module->remote_syncstructure_counter_rkey);
-	module->remote_syncstructure_counter_rkey = NULL;
-	module->remote_syncstructure_counter_addr = 0;
-	if (NULL != module->remote_syncstructure_arrival_arr_rkey)
-		ucp_rkey_destroy(module->remote_syncstructure_arrival_arr_rkey);
-	module->remote_syncstructure_arrival_arr_rkey = NULL;
-	module->remote_syncstructure_arrival_arr_addr = 0;
+	for (int i = 0; i < module->wsize; i++) {
+		if (NULL == module->remote_pbuffs.buffer_rkey_arr)break;
+		if (NULL == module->remote_pbuffs.buffer_rkey_arr[i])continue;
+		ucp_rkey_destroy(module->remote_pbuffs.buffer_rkey_arr[i]);
+	}
+	free(module->remote_pbuffs.buffer_rkey_arr);
+	module->remote_pbuffs.buffer_rkey_arr = NULL;
+	free(module->remote_pbuffs.buffer_addr_arr);
+	module->remote_pbuffs.buffer_addr_arr = NULL;
+	for (int i = 0; i < module->wsize; i++) {
+		if (NULL == module->remote_pbuffs.dbell_rkey_arr)break;
+		if (NULL == module->remote_pbuffs.dbell_rkey_arr[i]) continue;
+		ucp_rkey_destroy(module->remote_pbuffs.dbell_rkey_arr[i]);
+	}
+	free(module->remote_pbuffs.dbell_rkey_arr);
+	module->remote_pbuffs.dbell_rkey_arr = NULL;
+	free(module->remote_pbuffs.dbell_addr_arr);
+	module->remote_pbuffs.dbell_addr_arr = NULL;
+
+	if (NULL != module->local_postbuf_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_postbuf_h);
+	}
+	module->local_postbuf_h = NULL;
+	module->local_postbuf_attrs.address = NULL;
+	if (NULL != module->local_dbell_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_dbell_h);
+	}
+	module->local_dbell_h = NULL;
+	module->local_dbell_attrs.address = NULL;
 
 	for (int32_t i = 0; i < module->wsize; i++) {
 		if (NULL == module->ucp_ep_arr) break;
@@ -101,8 +64,20 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	}
 	free(module->ucp_ep_arr);
 	module->ucp_ep_arr = NULL;
+	module->ucp_is_initialized = 0;
+
+	if (NULL != module->intra_comm) {
+		ompi_comm_free(&(module->intra_comm));
+		module->intra_comm = NULL;
+	}
+	if (NULL != module->inter_comm) {
+		ompi_comm_free(&(module->inter_comm));
+		module->inter_comm = NULL;
+	}
 
 	OBJ_RELEASE(module->fallback_allreduce_module);
+	module->fallback_allreduce_module = NULL;
+	module->fallback_allreduce = NULL;
 }
 
 OBJ_CLASS_INSTANCE(mca_coll_bkpap_module_t, mca_coll_base_module_t,

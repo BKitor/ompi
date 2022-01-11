@@ -21,7 +21,7 @@ BEGIN_C_DECLS
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
 #define BKPAP_POSTBUF_SIZE (1<<26)
 
-enum mca_coll_bkpap_dbell_state{
+enum mca_coll_bkpap_dbell_state {
 	BKPAP_DBELL_UNSET = -1,
 	BKPAP_DBELL_SET = 1,
 };
@@ -57,28 +57,31 @@ typedef struct mca_coll_bkpap_remote_pbuffs_t {
 
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
+	void *endof_super; // clever/hacky solution for memory allocation, see mca_coll_bkpap_module_construct for use, better solution migth exist
+	// could just use fallback_allreduce_module, but this is more portable/easier to understand
 
 	mca_coll_base_module_t* fallback_allreduce_module;
 	mca_coll_base_module_allreduce_fn_t fallback_allreduce;
 
 	int32_t wsize;
 	int32_t rank; // these are saved for wiredown_ep
-	ucp_ep_h* ucp_ep_arr;
-
-	//TODO: fix to be (k-1) * log_k(mpi_wsize)
-	// void* , postbuff_size * (k - 1)
-	ucp_mem_h local_postbuf_h;
-	ucp_mem_attr_t local_postbuf_attrs;
-	// int64_t*, sizeof(int64_t) * (k - 1) 
-	ucp_mem_h local_dbell_h;
-	ucp_mem_attr_t local_dbell_attrs;
-
-	mca_coll_bkpap_remote_pbuffs_t remote_pbuffs;
 
 	ompi_communicator_t* inter_comm;
 	ompi_communicator_t* intra_comm;
 
+	int ucp_is_initialized;
+
+	ucp_ep_h* ucp_ep_arr;
+
+	ucp_mem_h local_dbell_h;// int64_t*, sizeof(int64_t) * (k - 1) 
+	ucp_mem_attr_t local_dbell_attrs;
+	ucp_mem_h local_postbuf_h;// void* , postbuff_size * (k - 1)
+	ucp_mem_attr_t local_postbuf_attrs;
+
+	mca_coll_bkpap_remote_pbuffs_t remote_pbuffs;
+
 	mca_coll_bkpap_syncstruct_t* local_syncstructure;
+
 	uint64_t remote_syncstructure_counter_addr;
 	ucp_rkey_h remote_syncstructure_counter_rkey;
 	uint64_t remote_syncstructure_arrival_arr_addr;
@@ -116,14 +119,14 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 int mca_coll_bkpap_wireup_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int64_t* ret_pos); // can drop the 'comm' param
+int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos); // can drop the 'comm' param
 
-int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int* rank);
+int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
 	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t *op, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, mca_coll_bkpap_module_t* module);
 END_C_DECLS
 
 #endif

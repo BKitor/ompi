@@ -44,6 +44,6 @@ bk_val_tst(){
 		./ar_val.out
 }
 
-# bk_val_tst
+bk_val_tst
 bk_osu_tst
-bk_osu_def
+# bk_osu_def
