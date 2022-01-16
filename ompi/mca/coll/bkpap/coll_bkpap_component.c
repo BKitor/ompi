@@ -28,7 +28,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .postbuff_size = BKPAP_POSTBUF_SIZE,
     .allreduce_k_value = 4,
     .out_stream = -1,
-    .priority = 30,
+    .priority = 35,
     .disabled = 0,
 };
 

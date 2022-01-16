@@ -107,20 +107,22 @@ typedef struct mca_coll_bkpap_component_t {
 
 OMPI_MODULE_DECLSPEC extern mca_coll_bkpap_component_t mca_coll_bkpap_component;
 
-typedef struct mca_coll_bkpap_amoreq_t {
+typedef struct mca_coll_bkpap_req_t {
 	ucs_status_t ucs_status;
 	int complete;
-} mca_coll_bkpap_amoreq_t;
+} mca_coll_bkpap_req_t;
 
-void mca_coll_bkpap_amoreq_init(void* request);
+void mca_coll_bkpap_req_init(void* request);
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos); // can drop the 'comm' param
+int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos); 
+int mca_coll_bkpap_leave_inter(mca_coll_bkpap_module_t* module, int arrival);
 
+int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,

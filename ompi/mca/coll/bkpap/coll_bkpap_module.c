@@ -92,6 +92,10 @@ mca_coll_base_module_t* mca_coll_bkpap_comm_query(struct ompi_communicator_t* co
 	}
 
 	*priority = mca_coll_bkpap_component.priority;
+	if (mca_coll_bkpap_component.disabled) {
+		*priority = 0;
+	}
+
 	bkpap_module->super.coll_module_enable = mca_coll_bkpap_module_enable;
 	bkpap_module->super.coll_allreduce = mca_coll_bkpap_allreduce;
 

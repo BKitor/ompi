@@ -6,7 +6,6 @@
 
 #define _BK_CHK_RET(_ret, _msg) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR(_msg); return _ret;}
 
-// Just the Suncstructure stuff
 static inline int _bk_singlenode_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op, mca_coll_bkpap_module_t* bkpap_module) {
     int ret = OMPI_SUCCESS;
@@ -15,17 +14,23 @@ static inline int _bk_singlenode_allreduce(const void* sbuf, void* rbuf, int cou
     int rank = ompi_comm_rank(comm), size = ompi_comm_size(comm);
     int k = mca_coll_bkpap_component.allreduce_k_value;
 
-
+    comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
     ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, rank, &arrival_pos);
     _BK_CHK_RET(ret, "arrive at inter failed");
     arrival_pos += 1;
     BKPAP_OUTPUT("rank %d arrive %ld start val: %x", rank, arrival_pos, ((int*)rbuf)[0]);
-    // comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
+
+    // get root
+    int root = -1;
+    while (-1 == root) {
+        ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &root);
+        _BK_CHK_RET(ret, "get rank of arrival failed");
+    }
 
     int tmp_k = k;
     while (arrival_pos % tmp_k == 0) {
         int num_buffers = (k - 1);
-        // BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
+        BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", ompi_comm_rank(comm), arrival_pos, num_buffers, tmp_k);
         ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, bkpap_module);
         _BK_CHK_RET(ret, "reduce postbuf failed");
 
@@ -36,7 +41,7 @@ static inline int _bk_singlenode_allreduce(const void* sbuf, void* rbuf, int cou
     if (arrival_pos == 0) {
         if ((tmp_k / k) < size) {  // condition to do final recieve if not power of k
             int num_buffers = 1; // TODO: fix to that it will work for different K values, this only works for k=4
-            // BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", global_rank, arrival_pos, num_buffers, tmp_k);
+            BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", ompi_comm_rank(comm), arrival_pos, num_buffers, tmp_k);
             ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, bkpap_module);
             _BK_CHK_RET(ret, "reduce postbuf failed");
         }
@@ -49,21 +54,18 @@ static inline int _bk_singlenode_allreduce(const void* sbuf, void* rbuf, int cou
             _BK_CHK_RET(ret, "get rank of arrival failed");
         }
 
-        // BKPAP_OUTPUT("rank %d arrive %ld send to pos %d (rank %d)", global_rank, arrival_pos, send_arrival_pos, send_hrank);
+        // BKPAP_OUTPUT("rank %d arrive %ld send to arrival %d (rank %d)", ompi_comm_rank(comm), arrival_pos, send_arrival_pos, send_hrank);
         ret = mca_coll_bkpap_write_parent_postbuf(rbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
         _BK_CHK_RET(ret, "write parent postbuf failed");
-    }
-
-    // internode bcast
-    int root = -1;
-    while (-1 == root) {
-        ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &root);
-        _BK_CHK_RET(ret, "get rank of arrival failed");
     }
 
     // intranode bcast
     ret = comm->c_coll->coll_bcast(rbuf, count, dtype, root, comm, comm->c_coll->coll_bcast_module);
     _BK_CHK_RET(ret, "singlenode bcast failed");
+
+    ret = mca_coll_bkpap_leave_inter(bkpap_module, arrival_pos);
+    _BK_CHK_RET(ret, "leave inter failed");
+
 
     return ret;
 }
@@ -88,6 +90,13 @@ static inline int _bk_multinode_allreduce(const void* sbuf, void* rbuf, int coun
         _BK_CHK_RET(ret, "arrive at inter falied");
         arrival_pos += 1;
         BKPAP_OUTPUT("rank %d arrive %ld start val: %x", inter_rank, arrival_pos, ((int*)rbuf)[0]);
+        
+        // get root
+        int root = -1;
+        while (-1 == root) {
+            ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &root);
+            _BK_CHK_RET(ret, "get rank of arrival failed");
+        }
 
         int tmp_k = k;
         while (arrival_pos % tmp_k == 0) {
@@ -122,12 +131,8 @@ static inline int _bk_multinode_allreduce(const void* sbuf, void* rbuf, int coun
             _BK_CHK_RET(ret, "write parent postbuf failed");
         }
 
-        // internode bcast
-        int root = -1;
-        while (-1 == root) {
-            ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &root);
-            _BK_CHK_RET(ret, "get rank of arrival failed");
-        }
+        ret = mca_coll_bkpap_leave_inter(bkpap_module, arrival_pos);
+        _BK_CHK_RET(ret, "leave inter failed");
 
         ret = bkpap_module->inter_comm->c_coll->coll_bcast(
             rbuf, count, dtype, root,
@@ -187,9 +192,11 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     int intra_rank = ompi_comm_rank(bkpap_module->intra_comm);
     int inter_wsize = ompi_comm_rank(bkpap_module->inter_comm);
 
+    BKPAP_OUTPUT("comm rank %d, intra rank %d, inter rank %d", ompi_comm_rank(comm), ompi_comm_rank(bkpap_module->intra_comm),ompi_comm_rank(bkpap_module->inter_comm) );
+
     int is_multinode = intra_wsize < global_wsize;
-    struct ompi_communicator_t* ss_comm = (is_multinode) ? bkpap_module->inter_comm : comm;
-    int ss_wsize = (is_multinode) ? inter_wsize : global_wsize;
+    struct ompi_communicator_t* ss_comm = (is_multinode) ? bkpap_module->inter_comm : bkpap_module->intra_comm;
+    // int ss_wsize = (is_multinode) ? inter_wsize : global_wsize;
 
     // if (intra_rank == 0 && !bkpap_module->ucp_is_initialized) {
     if ((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
@@ -212,33 +219,32 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             goto bkpap_ar_fallback;
         }
         bkpap_module->ucp_is_initialized = 1;
-        // ss_comm->c_coll->coll_barrier(ss_comm, ss_comm->c_coll->coll_barrier_module);
     }
 
 
     if (is_multinode) {
         ret = _bk_multinode_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module);
-        if(ret != OMPI_SUCCESS){
+        if (ret != OMPI_SUCCESS) {
             BKPAP_ERROR("multi-node failed, falling back");
             goto bkpap_ar_fallback;
         }
     }
     else {
         ret = _bk_singlenode_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module);
-        if(ret != OMPI_SUCCESS){
+        if (ret != OMPI_SUCCESS) {
             BKPAP_ERROR("single-node failed, falling back");
             goto bkpap_ar_fallback;
         }
     }
 
-    // reset syncstructure
-    if (0 == ompi_comm_rank(ss_comm)) {
-        int64_t* tmp = (int64_t*)bkpap_module->local_syncstructure->counter_attr.address;
-        *tmp = -1;
-        tmp = (int64_t*)bkpap_module->local_syncstructure->arrival_arr_attr.address;
-        for (int i = 0; i < ss_wsize; i++)
-            tmp[i] = -1;
-    }
+    // // reset syncstructure
+    // if (0 == ompi_comm_rank(ss_comm) && intra_rank == 0) {
+    //     int64_t* tmp = (int64_t*)bkpap_module->local_syncstructure->counter_attr.address;
+    //     while (-1 != *tmp) ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+    //     tmp = (int64_t*)bkpap_module->local_syncstructure->arrival_arr_attr.address;
+    //     for (int i = 0; i < ss_wsize; i++)
+    //         tmp[i] = -1;
+    // }
 
     BKPAP_OUTPUT("rank %d returning first val %x BKPAP ALLREDUCE SUCCESSFULL", global_rank, ((int*)rbuf)[0]);
     return OMPI_SUCCESS;
