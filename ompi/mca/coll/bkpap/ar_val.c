@@ -2,10 +2,9 @@
 #include <stdlib.h>
 #include "mpi.h"
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char* argv[]) {
     int rank, size;
-    int *snd_bff, memsize;
+    int* snd_bff, * rcv_bff, memsize;
     int g_err = 0;
 
     MPI_Init(&argc, &argv);
@@ -15,34 +14,35 @@ int main(int argc, char *argv[])
 
     memsize = 1 << 22;
 
-    snd_bff = malloc(memsize * sizeof(int));
+    snd_bff = malloc(memsize * sizeof(*snd_bff));
+    rcv_bff = malloc(memsize * sizeof(*rcv_bff));
 
     int g_sum = 0;
-    for(int i = 0; i<size; i++)
+    for (int i = 0; i < size; i++) {
         g_sum += i;
+    }
 
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++)     {
         int err = 0;
-        for (int j = 0; j < memsize; j++)
-        {
-            snd_bff[j] = rank*i;
+        for (int j = 0; j < memsize; j++){
+            rcv_bff[j] = 0;
+            snd_bff[j] = rank * i;
         }
 
+        MPI_Allreduce(snd_bff, rcv_bff, memsize, MPI_INT, MPI_BXOR, MPI_COMM_WORLD);
         MPI_Allreduce(MPI_IN_PLACE, snd_bff, memsize, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
-        for (int j = 0; j < memsize; j++)
-        {
-            if (snd_bff[j] != g_sum*i)
+        for (int j = 0; j < memsize; j++)         {
+            if (snd_bff[j] != g_sum * i)
                 err += 1;
         }
 
-        if (err)
-        {
-            printf("ERROR: rank:%d snd_buff %d not equal round %d, shoudl be %d\n", rank, snd_bff[0], i, g_sum*i);
+        if (err)         {
+            printf("ERROR: rank:%d snd_buff %d not equal round %d, shoudl be %d\n", rank, snd_bff[0], i, g_sum * i);
             g_err = 69;
-        }else{
-            if(rank == 0)printf("VAL SUCCESS: round %d, should be: %d, is: %d\n", i, g_sum*i, snd_bff[0]);
+        }
+        else {
+            if (rank == 0)printf("VAL SUCCESS: round %d, should be: %d, is: %d\n", i, g_sum * i, snd_bff[0]);
         }
 
         fflush(stdout);
