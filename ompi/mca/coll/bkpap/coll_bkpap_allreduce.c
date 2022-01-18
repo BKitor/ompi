@@ -19,11 +19,6 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
     arrival_pos += 1;
     BKPAP_OUTPUT("rank %d arrive %ld start val: %x", rank, arrival_pos, ((int*)rbuf)[0]);
 
-    int root = -1;
-    while (-1 == root) {
-        ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &root);
-        _BK_CHK_RET(ret, "get rank of arrival failed");
-    }
 
     int tmp_k = k;
     while (arrival_pos % tmp_k == 0) {
@@ -56,9 +51,20 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
         _BK_CHK_RET(ret, "write parent postbuf failed");
     }
 
+    int tree_root = -1;
+    while (-1 == tree_root) {
+        ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &tree_root);
+        _BK_CHK_RET(ret, "get rank of arrival failed");
+    }
+
     // intranode bcast
-    ret = comm->c_coll->coll_bcast(rbuf, count, dtype, root, comm, comm->c_coll->coll_bcast_module);
+    ret = comm->c_coll->coll_bcast(rbuf, count, dtype, tree_root, comm, comm->c_coll->coll_bcast_module); 
     _BK_CHK_RET(ret, "singlenode bcast failed");
+
+    // sm bcast is non-blocking, need to block before leaving coll
+    // TODO: desing reset-system that doesn't block 
+        // hard-reset by rank 0 or last rank, and  check in arrival that arrival_pos < world_size
+    comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module); 
 
     ret = mca_coll_bkpap_leave_inter(bkpap_module, arrival_pos);
     _BK_CHK_RET(ret, "leave inter failed");
@@ -69,7 +75,7 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
 static inline int _bk_singlenode_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op,
     mca_coll_bkpap_module_t* bkpap_module) {
-    
+
     return _bk_papaware_allreduce(
         sbuf, rbuf, count, dtype, op, bkpap_module->intra_comm, bkpap_module);
 }
@@ -80,8 +86,8 @@ static inline int _bk_multinode_allreduce(const void* sbuf, void* rbuf, int coun
     mca_coll_bkpap_module_t* bkpap_module) {
     int ret = OMPI_SUCCESS;
     int intra_rank = ompi_comm_rank(bkpap_module->intra_comm);
-    
-    const void* reduce_sbuf = (intra_rank == 0) ? MPI_IN_PLACE : rbuf ;
+
+    const void* reduce_sbuf = (intra_rank == 0) ? MPI_IN_PLACE : rbuf;
     void* reduce_rbuf = (intra_rank == 0) ? rbuf : NULL;
     ret = bkpap_module->intra_comm->c_coll->coll_reduce(
         reduce_sbuf, reduce_rbuf, count, dtype, op, 0,
