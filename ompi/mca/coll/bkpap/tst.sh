@@ -24,8 +24,8 @@ BK_OSU_PAP="$BK_OMB_DIR/build/libexec/osu-micro-benchmarks/mpi/collective/bk_osu
 bk_osu_tst(){
 	mpirun -n $BK_NUM_PROC \
 		--display bind \
-		$BK_OSU_PAP 
-		# -i 130 -x 1 -m "$((1<<20)):$((1<<23))"
+		$BK_OSU_PAP \
+		-i 130 -x 1 -m "$((1<<20)):$((1<<23))"
 		# -i 1 -x 0 -m "$BK_PBUF_SIZE:$BK_PBUF_SIZE"
 
 		# --map-by :OVERSUBSCRIBE \

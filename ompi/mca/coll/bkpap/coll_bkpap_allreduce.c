@@ -25,6 +25,7 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
         int num_buffers = (k - 1);
         BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", ompi_comm_rank(comm), arrival_pos, num_buffers, tmp_k);
         ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, bkpap_module);
+        // ret = mca_coll_bkpap_reduce_postbufs_p2p(rbuf, dtype, count, op, num_buffers, comm, bkpap_module);
         _BK_CHK_RET(ret, "reduce postbuf failed");
 
         tmp_k *= k;
@@ -35,6 +36,7 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
             int num_buffers = 1; // TODO: fix to that it will work for different K values, this only works for k=4
             BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", ompi_comm_rank(comm), arrival_pos, num_buffers, tmp_k);
             ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, bkpap_module);
+            // ret = mca_coll_bkpap_reduce_postbufs_p2p(rbuf, dtype, count, op, num_buffers, comm, bkpap_module);
             _BK_CHK_RET(ret, "reduce postbuf failed");
         }
     }
@@ -48,6 +50,7 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
 
         // BKPAP_OUTPUT("rank %d arrive %ld send to arrival %d (rank %d)", ompi_comm_rank(comm), arrival_pos, send_arrival_pos, send_hrank);
         ret = mca_coll_bkpap_write_parent_postbuf(rbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
+        // ret = mca_coll_bkpap_write_parent_postbuf_p2p(rbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
         _BK_CHK_RET(ret, "write parent postbuf failed");
     }
 
@@ -58,13 +61,13 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
     }
 
     // intranode bcast
-    ret = comm->c_coll->coll_bcast(rbuf, count, dtype, tree_root, comm, comm->c_coll->coll_bcast_module); 
+    ret = comm->c_coll->coll_bcast(rbuf, count, dtype, tree_root, comm, comm->c_coll->coll_bcast_module);
     _BK_CHK_RET(ret, "singlenode bcast failed");
 
     // sm bcast is non-blocking, need to block before leaving coll
     // TODO: desing reset-system that doesn't block 
         // hard-reset by rank 0 or last rank, and  check in arrival that arrival_pos < world_size
-    comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module); 
+    comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 
     ret = mca_coll_bkpap_leave_inter(bkpap_module, arrival_pos);
     _BK_CHK_RET(ret, "leave inter failed");

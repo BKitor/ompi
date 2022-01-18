@@ -1,5 +1,6 @@
 #include "coll_bkpap.h"
 #include "ompi/datatype/ompi_datatype.h"
+#include "ompi/mca/pml/pml.h"
 
 void mca_coll_bkpap_req_init(void* request) {
 	mca_coll_bkpap_req_t* r = request;
@@ -494,7 +495,7 @@ int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_r
 	}
 	if (UCS_PTR_IS_PTR(status_ptr))
 		ucp_request_free(status_ptr);
-	
+
 	status = _bk_flush_worker();
 	if (UCS_OK != status) {
 		BKPAP_ERROR("worker flush failed");
@@ -577,7 +578,7 @@ int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* mod
 		BKPAP_ERROR("Rank translation failed with error %d (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
 	}
-	if(UCS_PTR_IS_PTR(status_ptr))
+	if (UCS_PTR_IS_PTR(status_ptr))
 		ucp_request_free(status_ptr);
 	status = _bk_flush_worker();
 	if (UCS_OK != status) {
@@ -642,6 +643,83 @@ int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 		BKPAP_ERROR("Worker flush failed");
 		return OMPI_ERROR;
 	}
+
+	return ret;
+}
+
+int mca_coll_bkpap_reduce_postbufs_p2p(void* local_buf, struct ompi_datatype_t* dtype, int count,
+	ompi_op_t* op, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+	int ret = OMPI_SUCCESS;
+	volatile int64_t* dbells = module->local_dbell_attrs.address;
+	size_t dtype_size;
+	ompi_datatype_type_size(dtype, &dtype_size);
+
+	void* tmp_recived_buffer = calloc(count, dtype_size);
+
+	BKPAP_OUTPUT("rank %d p2p reduce, dbells [ %ld %ld %ld ]", ompi_comm_rank(comm),
+		dbells[0], dbells[1], dbells[2]);
+
+	for (int i = 0; i < num_buffers; i++) {
+		while (BKPAP_DBELL_UNSET == dbells[i])ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+
+		ret = MCA_PML_CALL(recv(tmp_recived_buffer, count, dtype, dbells[i], MCA_COLL_BASE_TAG_ALLREDUCE, comm, MPI_STATUS_IGNORE));
+		if (OMPI_SUCCESS != ret) {
+			BKPAP_ERROR("reduce p2p recieve failed");
+			return ret;
+		}
+		ompi_op_reduce(op, tmp_recived_buffer, local_buf, count, dtype);
+
+		dbells[i] = BKPAP_DBELL_UNSET;
+	}
+
+	BKPAP_OUTPUT("WE REDUCED WITH WITH P2P");
+
+	return ret;
+}
+
+int mca_coll_bkpap_write_parent_postbuf_p2p(const void* buf,
+	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
+	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+	ucs_status_t status;
+	ucs_status_ptr_t status_ptr;
+	int ret = OMPI_SUCCESS;
+	// int64_t dbell_put_buf = BKPAP_DBELL_SET;
+	int64_t dbell_put_buf = ompi_comm_rank(comm);
+	uint64_t postbuf_addr;
+	size_t dtype_size;
+	int k = mca_coll_bkpap_component.allreduce_k_value;
+
+	int slot = ((arrival / (radix / k)) % k) - 1;
+
+	postbuf_addr = (module->remote_pbuffs.buffer_addr_arr[send_rank]) + (slot * mca_coll_bkpap_component.postbuff_size);
+	ompi_datatype_type_size(dtype, &dtype_size);
+	BKPAP_OUTPUT("arrival: %ld (rank %d), dest rank: %d, slot %d, addr: %lx, rkey:%lx", arrival, ompi_comm_rank(comm), send_rank, slot, postbuf_addr, (intptr_t)module->remote_pbuffs.buffer_rkey_arr[send_rank]);
+
+	uint64_t dbell_addr = (module->remote_pbuffs.dbell_addr_arr[send_rank]) + (slot * sizeof(uint64_t));
+	status_ptr = ucp_put_nb(
+		module->ucp_ep_arr[send_rank], &dbell_put_buf, sizeof(dbell_put_buf),
+		dbell_addr,
+		module->remote_pbuffs.dbell_rkey_arr[send_rank],
+		_bk_send_cb_noparams);
+	if (UCS_PTR_IS_ERR(status_ptr)) {
+		BKPAP_ERROR("rank %d (arrive %ld) Write patent debll returned error %d (%s)", ompi_comm_rank(comm), arrival, UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
+		return OMPI_ERROR;
+	}
+	if (UCS_PTR_IS_PTR(status_ptr))
+		ucp_request_free(status_ptr);
+
+	status = _bk_flush_worker();
+	if (UCS_OK != status) {
+		BKPAP_ERROR("Worker flush failed");
+		return OMPI_ERROR;
+	}
+	
+	ret = MCA_PML_CALL(send(buf, count, dtype, send_rank, MCA_COLL_BASE_TAG_ALLREDUCE, MCA_PML_BASE_SEND_STANDARD, comm));
+	if(OMPI_SUCCESS != ret){
+		BKPAP_ERROR("write_parent_p2p failed");
+		return ret;
+	}
+	BKPAP_OUTPUT("WE POSTED WITH WITH P2P");
 
 	return ret;
 }

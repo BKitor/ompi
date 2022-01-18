@@ -30,6 +30,7 @@ int main(int argc, char* argv[]) {
         }
 
         MPI_Allreduce(snd_bff, rcv_bff, memsize, MPI_INT, MPI_BXOR, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD); // TODO: Remove this when ss leaving is better implimented
         MPI_Allreduce(MPI_IN_PLACE, snd_bff, memsize, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
         for (int j = 0; j < memsize; j++)         {

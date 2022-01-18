@@ -57,7 +57,7 @@ typedef struct mca_coll_bkpap_remote_pbuffs_t {
 
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
-	void *endof_super; // clever/hacky solution for memory allocation, see mca_coll_bkpap_module_construct for use, better solution migth exist
+	void* endof_super; // clever/hacky solution for memory allocation, see mca_coll_bkpap_module_construct for use, better solution migth exist
 	// could just use fallback_allreduce_module, but this is more portable/easier to understand
 
 	mca_coll_base_module_t* fallback_allreduce_module;
@@ -119,7 +119,7 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 int mca_coll_bkpap_wireup_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos); 
+int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos);
 int mca_coll_bkpap_leave_inter(mca_coll_bkpap_module_t* module, int arrival);
 
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, int* rank);
@@ -127,8 +127,11 @@ int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* mod
 int mca_coll_bkpap_write_parent_postbuf(const void* buf,
 	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
 	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
 int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, mca_coll_bkpap_module_t* module);
-END_C_DECLS
 
+int mca_coll_bkpap_write_parent_postbuf_p2p(const void* buf, struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
+	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_reduce_postbufs_p2p(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+END_C_DECLS
 #endif
