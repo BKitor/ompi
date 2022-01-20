@@ -551,7 +551,7 @@ int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtyp
 		dbells[2]);
 
 	for (int i = 0; i < num_buffers; i++) {
-		while (BKPAP_DBELL_UNSET == dbells[i])ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+		while (BKPAP_DBELL_UNSET == dbells[i]);
 		void* recived_buffer = pbuffs + (i * mca_coll_bkpap_component.postbuff_size);
 		ompi_op_reduce(op, recived_buffer,
 			local_buf, count, dtype);
@@ -660,7 +660,7 @@ int mca_coll_bkpap_reduce_postbufs_p2p(void* local_buf, struct ompi_datatype_t* 
 		dbells[0], dbells[1], dbells[2]);
 
 	for (int i = 0; i < num_buffers; i++) {
-		while (BKPAP_DBELL_UNSET == dbells[i])ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+		while (BKPAP_DBELL_UNSET == dbells[i]);
 
 		ret = MCA_PML_CALL(recv(tmp_recived_buffer, count, dtype, dbells[i], MCA_COLL_BASE_TAG_ALLREDUCE, comm, MPI_STATUS_IGNORE));
 		if (OMPI_SUCCESS != ret) {
@@ -683,7 +683,6 @@ int mca_coll_bkpap_write_parent_postbuf_p2p(const void* buf,
 	ucs_status_t status;
 	ucs_status_ptr_t status_ptr;
 	int ret = OMPI_SUCCESS;
-	// int64_t dbell_put_buf = BKPAP_DBELL_SET;
 	int64_t dbell_put_buf = ompi_comm_rank(comm);
 	uint64_t postbuf_addr;
 	size_t dtype_size;
