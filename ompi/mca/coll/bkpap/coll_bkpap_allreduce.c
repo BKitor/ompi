@@ -6,7 +6,14 @@
 
 #define _BK_CHK_RET(_ret, _msg) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR(_msg); return _ret;}
 
-static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count,
+static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int count,
+    struct ompi_datatype_t* dtype, struct ompi_op_t* op,
+    struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+
+    return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op,
     struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
     int ret = OMPI_SUCCESS;
@@ -77,16 +84,28 @@ static inline int _bk_papaware_allreduce(const void* sbuf, void* rbuf, int count
 
 static inline int _bk_singlenode_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op,
-    mca_coll_bkpap_module_t* bkpap_module) {
+    mca_coll_bkpap_module_t* bkpap_module, int alg) {
 
-    return _bk_papaware_allreduce(
-        sbuf, rbuf, count, dtype, op, bkpap_module->intra_comm, bkpap_module);
+    switch (alg) {
+    case BKPAP_ALLREDUCE_ALG_RSA:
+        return _bk_papaware_rsa_allreduce(
+            sbuf, rbuf, count, dtype, op, bkpap_module->intra_comm, bkpap_module);
+        break;
+    case BKPAP_ALLREDUCE_ALG_KTREE:
+        return _bk_papaware_ktree_allreduce(
+            sbuf, rbuf, count, dtype, op, bkpap_module->intra_comm, bkpap_module);
+        break;
+    default:
+        BKPAP_ERROR("singlenode allreduce switch defaulted on alg: %d", alg);
+        return OMPI_ERROR;
+        break;
+    }
 }
 
 // Intranode reduce, internode-syncstructure, internode, allreduce 
 static inline int _bk_multinode_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op,
-    mca_coll_bkpap_module_t* bkpap_module) {
+    mca_coll_bkpap_module_t* bkpap_module, int alg) {
     int ret = OMPI_SUCCESS;
     int intra_rank = ompi_comm_rank(bkpap_module->intra_comm);
 
@@ -99,7 +118,19 @@ static inline int _bk_multinode_allreduce(const void* sbuf, void* rbuf, int coun
     _BK_CHK_RET(ret, "intranode reduce failed");
 
     if (intra_rank == 0) {
-        ret = _bk_papaware_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module->inter_comm, bkpap_module);
+        switch (alg) {
+        case BKPAP_ALLREDUCE_ALG_KTREE:
+            ret = _bk_papaware_ktree_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module->inter_comm, bkpap_module);
+            break;
+        case BKPAP_ALLREDUCE_ALG_RSA:
+            ret = _bk_papaware_rsa_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module->inter_comm, bkpap_module);
+            break;
+
+        default:
+            BKPAP_ERROR("multinode allreduce switch defaulted on alg: %d", alg);
+            ret = OMPI_ERROR;
+            break;
+        }
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Multi-node pap-aware stage failed");
             return ret;
@@ -123,7 +154,12 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_communicator_t* comm,
     mca_coll_base_module_t* module) {
     mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
-    int ret = OMPI_SUCCESS;
+    int ret = OMPI_SUCCESS, alg = mca_coll_bkpap_component.allreduce_alg;
+
+    if (OPAL_UNLIKELY(alg >= BKPAP_ALLREDUCE_ALG_COUNT)) {
+        BKPAP_ERROR("Selected alg %d not available, change OMPI_MCA_coll_bkpap_allreduce_alg", alg);
+        goto bkpap_ar_fallback;
+    }
 
     if (!ompi_op_is_commute(op)) {
         BKPAP_ERROR("Commutative operation, going to fallback");
@@ -161,15 +197,15 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     int is_multinode = intra_wsize < global_wsize;
     struct ompi_communicator_t* ss_comm = (is_multinode) ? bkpap_module->inter_comm : bkpap_module->intra_comm;
 
-    if ((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
-        || (!is_multinode && !bkpap_module->ucp_is_initialized)) {
+    if (OPAL_UNLIKELY((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
+        || (!is_multinode && !bkpap_module->ucp_is_initialized))) {
         ret = mca_coll_bkpap_wireup_endpoints(bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Endpoint Wireup Failed, fallingback");
             goto bkpap_ar_fallback;
         }
 
-        ret = mca_coll_bkpap_wireup_postbuffs(bkpap_module, ss_comm);
+        ret = mca_coll_bkpap_wireup_postbuffs(alg, bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
             goto bkpap_ar_fallback;
@@ -185,30 +221,22 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
 
     if (is_multinode) {
-        ret = _bk_multinode_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module);
+        ret = _bk_multinode_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module, alg);
         if (ret != OMPI_SUCCESS) {
             BKPAP_ERROR("multi-node failed, falling back");
             goto bkpap_ar_fallback;
         }
     }
     else {
-        ret = _bk_singlenode_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module);
+        ret = _bk_singlenode_allreduce(sbuf, rbuf, count, dtype, op, bkpap_module, alg);
         if (ret != OMPI_SUCCESS) {
             BKPAP_ERROR("single-node failed, falling back");
             goto bkpap_ar_fallback;
         }
     }
 
-    // // reset syncstructure
-    // if (0 == ompi_comm_rank(ss_comm) && intra_rank == 0) {
-    //     int64_t* tmp = (int64_t*)bkpap_module->local_syncstructure->counter_attr.address;
-    //     while (-1 != *tmp) ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
-    //     tmp = (int64_t*)bkpap_module->local_syncstructure->arrival_arr_attr.address;
-    //     for (int i = 0; i < ss_wsize; i++)
-    //         tmp[i] = -1;
-    // }
 
-    BKPAP_OUTPUT("rank %d returning first val %x BKPAP ALLREDUCE SUCCESSFULL", global_rank, ((int*)rbuf)[0]);
+    BKPAP_OUTPUT("rank %d returning first val %d BKPAP ALLREDUCE SUCCESSFULL", global_rank, ((int*)rbuf)[0]);
     return OMPI_SUCCESS;
 
 bkpap_ar_fallback:

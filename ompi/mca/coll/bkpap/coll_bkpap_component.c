@@ -27,6 +27,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
 
     .postbuff_size = BKPAP_POSTBUF_SIZE,
     .allreduce_k_value = 4,
+    .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
     .out_stream = -1,
     .priority = 35,
     .disabled = 0,
@@ -57,6 +58,11 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_k_value);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "allreduce_alg", "Select pap-awareness alg for inter-stage allreduce, {0:ktree, 1:RSA}",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_alg);
+
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "priority", "Priority of the component",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.priority);
@@ -65,11 +71,11 @@ static int bkpap_register(void) {
         "disabled", "Turn bkpap off",
         MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.disabled);
-    return OMPI_SUCCESS;
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "postbuff_size", "Size of preposted buffer, default 64MB",
         MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.postbuff_size);
+
     return OMPI_SUCCESS;
 }

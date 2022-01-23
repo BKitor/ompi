@@ -100,6 +100,7 @@ typedef struct mca_coll_bkpap_component_t {
 
 	uint64_t postbuff_size;
 	int allreduce_k_value;
+	int allreduce_alg;
 	int out_stream;
 	int priority;
 	int disabled;
@@ -116,7 +117,7 @@ void mca_coll_bkpap_req_init(void* request);
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wireup_postbuffs(int alg, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos);
@@ -132,6 +133,12 @@ int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtyp
 int mca_coll_bkpap_write_parent_postbuf_p2p(const void* buf, struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
 	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reduce_postbufs_p2p(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+enum mca_coll_bkpap_allreduce_algs{
+	BKPAP_ALLREDUCE_ALG_KTREE = 0,
+	BKPAP_ALLREDUCE_ALG_RSA   = 1,
+	BKPAP_ALLREDUCE_ALG_COUNT
+};
 
 END_C_DECLS
 #endif

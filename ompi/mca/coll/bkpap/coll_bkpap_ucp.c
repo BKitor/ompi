@@ -187,7 +187,8 @@ bkpap_ep_wireup_err:
 #undef _BKPAP_CHK_MPI
 }
 
-int mca_coll_bkpap_wireup_postbuffs(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
+// TODO: Number of allocated postsbufs should be determined by the alg
+int mca_coll_bkpap_wireup_postbuffs(int alg, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
 #define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_remotepostbuf_wireup_err;}
 #define _BKPAP_CHK_UCP(_status) if(UCS_OK != _status){BKPAP_ERROR("UCP op in postbuf wireup failed"); ret = OMPI_ERROR; goto bkpap_remotepostbuf_wireup_err;}
 #define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in postbuf wireup failed"); goto bkpap_remotepostbuf_wireup_err;}
@@ -534,6 +535,15 @@ int mca_coll_bkpap_leave_inter(mca_coll_bkpap_module_t* module, int arrival) {
 		BKPAP_ERROR("bk flush worker: %d (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
 	}
+ 
+    // if (0 == ompi_comm_rank(ss_comm) && intra_rank == 0) {
+    //     int64_t* tmp = (int64_t*)module->local_syncstructure->counter_attr.address;
+    // //     while (-1 != *tmp) ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+    //     tmp = (int64_t*)module->local_syncstructure->arrival_arr_attr.address;
+    //     for (int i = 0; i < ss_wsize; i++)
+    //         tmp[i] = -1;
+    // }
+
 	return OMPI_SUCCESS;
 }
 
