@@ -18,8 +18,10 @@ BEGIN_C_DECLS
 
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
 #define BKPAP_OUTPUT(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__)
+// #define BKPAP_OUTPUT(_str,...) opal_output(mca_coll_bkpap_component.out_stream,"%s::%s line %d: "_str, __FILE__, __FUNCTION__,__LINE__, ##__VA_ARGS__)
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
 #define BKPAP_POSTBUF_SIZE (1<<26)
+#define BKPAP_OUTPUT_VARS(...) // would be cool if I had a function that takes a list of local vars, generates a string, and calls BKPAP_OUPUT
 
 enum mca_coll_bkpap_dbell_state {
 	BKPAP_DBELL_UNSET = -1,
@@ -81,6 +83,9 @@ typedef struct mca_coll_bkpap_module_t {
 	mca_coll_bkpap_remote_pbuffs_t remote_pbuffs;
 
 	mca_coll_bkpap_syncstruct_t* local_syncstructure;
+	int ss_counter_len;
+	int ss_arrival_arr_len;
+	int64_t* ss_arrival_arr_offsets;
 
 	uint64_t remote_syncstructure_counter_addr;
 	ucp_rkey_h remote_syncstructure_counter_rkey;
@@ -117,26 +122,20 @@ void mca_coll_bkpap_req_init(void* request);
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_postbuffs(int alg, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_syncstructure(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_arrive_at_inter(mca_coll_bkpap_module_t* module, int64_t ss_rank, int64_t* ret_pos);
-int mca_coll_bkpap_leave_inter(mca_coll_bkpap_module_t* module, int arrival);
 
-int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, int* rank);
-int mca_coll_bkpap_get_rank_of_arrival(int arrival, mca_coll_bkpap_module_t* module, int* rank);
-int mca_coll_bkpap_write_parent_postbuf(const void* buf,
-	struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
-	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_arrive_ss(mca_coll_bkpap_module_t* module, int64_t ss_rank, int counter_offset, int arrival_arr_offset, struct ompi_communicator_t* comm, int64_t* ret_pos);
+int mca_coll_bkpap_leave_ss(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int arrival);
+// int mca_coll_bkpap_get_rank_of_arrival(int arrival, int sync_round, mca_coll_bkpap_module_t* module, int* rank);
+int mca_coll_bkpap_get_rank_of_arrival(int arrival, int arival_round_offset, mca_coll_bkpap_module_t* module, int* rank);
+int mca_coll_bkpap_put_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int send_rank, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_write_parent_postbuf_p2p(const void* buf, struct ompi_datatype_t* dtype, int count, int64_t arrival, int radix, int send_rank,
-	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_reduce_postbufs_p2p(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
-enum mca_coll_bkpap_allreduce_algs{
+enum mca_coll_bkpap_allreduce_algs {
 	BKPAP_ALLREDUCE_ALG_KTREE = 0,
-	BKPAP_ALLREDUCE_ALG_RSA   = 1,
+	BKPAP_ALLREDUCE_ALG_RSA = 1,
 	BKPAP_ALLREDUCE_ALG_COUNT
 };
 

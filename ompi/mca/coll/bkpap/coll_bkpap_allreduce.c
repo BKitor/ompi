@@ -1,10 +1,46 @@
-#include "math.h"
 
 #include "coll_bkpap.h"
 #include "ompi/mca/coll/base/coll_base_functions.h"
 #include "ompi/op/op.h"
 
 #define _BK_CHK_RET(_ret, _msg) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR(_msg); return _ret;}
+
+// returns error if runs out of space
+static int _bk_fill_array_str_ld(size_t arr_len, int64_t* arr, size_t str_limit, char* out_str) {
+    if (str_limit < 3) return OMPI_ERROR;
+    char tmp[16] = { "\0" };
+    *out_str = '\0';
+    strcat(out_str, "[");
+    for (size_t i = 0; i < arr_len; i++) {
+        if (i == 0)
+            sprintf(tmp, " %ld", arr[i]);
+        else
+            sprintf(tmp, ", %ld", arr[i]);
+
+        if (strlen(tmp) > (str_limit - strlen(out_str)))
+            return OMPI_ERROR;
+
+        strcat(out_str, tmp);
+    }
+
+    if (strlen(out_str) > (str_limit + 1))
+        return OMPI_ERROR;
+    strcat(out_str, " ]");
+    return OMPI_SUCCESS;
+}
+
+static inline int _bk_int_pow(int base, int exp) {
+    int res = 1;
+    while (1) {
+        if (exp & 1)
+            res *= base;
+        exp >>= 1;
+        if (!exp)
+            break;
+        base *= base;
+    }
+    return res;
+}
 
 static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op,
@@ -17,54 +53,64 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     struct ompi_datatype_t* dtype, struct ompi_op_t* op,
     struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
     int ret = OMPI_SUCCESS;
-    int64_t arrival_pos = -1;
-    int rank = ompi_comm_rank(comm), size = ompi_comm_size(comm);
+    int mpi_rank = ompi_comm_rank(comm), mpi_size = ompi_comm_size(comm);
     int k = mca_coll_bkpap_component.allreduce_k_value;
+    int64_t arrival_pos = -1;
 
-    ret = mca_coll_bkpap_arrive_at_inter(bkpap_module, rank, &arrival_pos);
-    _BK_CHK_RET(ret, "arrive at inter failed");
-    arrival_pos += 1;
-    BKPAP_OUTPUT("rank %d arrive %ld start val: %x", rank, arrival_pos, ((int*)rbuf)[0]);
+    // DELETEME
+    char offsets_str[64] = { '\0' };
+    _bk_fill_array_str_ld(
+        bkpap_module->ss_counter_len, bkpap_module->ss_arrival_arr_offsets, 64, offsets_str);
+    BKPAP_OUTPUT("rank %d, offsets %s", mpi_rank, offsets_str);
+    // return OPAL_ERR_NOT_IMPLEMENTED;
+    // DELETEME
 
+    for (int sync_round = 0; sync_round < bkpap_module->ss_counter_len; sync_round++) {
+        uint64_t counter_offset = (sync_round * sizeof(int64_t));
+        size_t arrival_arr_offset = (bkpap_module->ss_arrival_arr_offsets[sync_round] * sizeof(int64_t));
 
-    int tmp_k = k;
-    while (arrival_pos % tmp_k == 0) {
-        int num_buffers = (k - 1);
-        BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", ompi_comm_rank(comm), arrival_pos, num_buffers, tmp_k);
-        ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, bkpap_module);
-        // ret = mca_coll_bkpap_reduce_postbufs_p2p(rbuf, dtype, count, op, num_buffers, comm, bkpap_module);
-        _BK_CHK_RET(ret, "reduce postbuf failed");
+        BKPAP_OUTPUT("round: %d, rank: %d, counter_offset: %ld, arrival_arr_offset: %ld", sync_round, mpi_rank, counter_offset, arrival_arr_offset);
+        ret = mca_coll_bkpap_arrive_ss(bkpap_module, mpi_rank, counter_offset, arrival_arr_offset, comm, &arrival_pos);
+        _BK_CHK_RET(ret, "arrive at inter failed");
+        arrival_pos += 1;
+        BKPAP_OUTPUT("round: %d, rank: %d, arrive: %ld ", sync_round, mpi_rank, arrival_pos);
 
-        tmp_k *= k;
-        if (tmp_k > size) break;
-    }
-    if (arrival_pos == 0) {
-        if ((tmp_k / k) < size) {  // condition to do final recieve if not power of k
-            int num_buffers = 1; // TODO: fix to that it will work for different K values, this only works for k=4
-            BKPAP_OUTPUT("rank %d arrive %ld recive with num_buffers %d and tmp_k %d", ompi_comm_rank(comm), arrival_pos, num_buffers, tmp_k);
-            ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_buffers, bkpap_module);
-            // ret = mca_coll_bkpap_reduce_postbufs_p2p(rbuf, dtype, count, op, num_buffers, comm, bkpap_module);
+        if (0 == arrival_pos % k) {
+            // receiving
+            // TODO: this num_reduction logic only works for k == 4, might want to fix at some point
+            int num_reductions = (_bk_int_pow(k, (sync_round + 1)) <= mpi_size) ? k - 1 : 1;
+            ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_reductions, bkpap_module);
             _BK_CHK_RET(ret, "reduce postbuf failed");
         }
-    }
-    else {
-        int send_arrival_pos = arrival_pos - (arrival_pos % tmp_k);
-        int send_hrank = -1;
-        while (-1 == send_hrank) {
-            ret = mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, bkpap_module, &send_hrank);
-            _BK_CHK_RET(ret, "get rank of arrival failed");
+        else {
+            // sending
+            int send_rank = -1;
+            int send_arrival_pos = arrival_pos - (arrival_pos % k);
+            int arrival_round_offset = bkpap_module->ss_arrival_arr_offsets[sync_round];
+            while (send_rank == -1) {
+                BKPAP_OUTPUT("rank: %d, arrival: %ld, getting arrival: %d, offset: %ld", mpi_rank, arrival_pos, send_arrival_pos, arrival_arr_offset);
+                ret = mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, arrival_round_offset, bkpap_module, &send_rank);
+                _BK_CHK_RET(ret, "get rank of arrival faild");
+                // usleep(10);
+                // sleep(2);
+            }
+
+            int slot = ((arrival_pos % k) - 1);
+
+            ret = mca_coll_bkpap_put_postbuf(rbuf, dtype, count, send_rank, slot, comm, bkpap_module);
+            _BK_CHK_RET(ret, "write parrent postuf failed");
+            break;
         }
-
-        // BKPAP_OUTPUT("rank %d arrive %ld send to arrival %d (rank %d)", ompi_comm_rank(comm), arrival_pos, send_arrival_pos, send_hrank);
-        ret = mca_coll_bkpap_write_parent_postbuf(rbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
-        // ret = mca_coll_bkpap_write_parent_postbuf_p2p(rbuf, dtype, count, arrival_pos, tmp_k, send_hrank, comm, bkpap_module);
-        _BK_CHK_RET(ret, "write parent postbuf failed");
+        arrival_pos = -1;
     }
 
+    // this is polling over the network, this is gross
     int tree_root = -1;
     while (-1 == tree_root) {
-        ret = mca_coll_bkpap_get_rank_of_arrival(0, bkpap_module, &tree_root);
+        int arrival_round_offset = bkpap_module->ss_arrival_arr_offsets[bkpap_module->ss_counter_len - 1];
+        ret = mca_coll_bkpap_get_rank_of_arrival(0, arrival_round_offset, bkpap_module, &tree_root);
         _BK_CHK_RET(ret, "get rank of arrival failed");
+        // usleep(10);
     }
 
     // intranode bcast
@@ -74,9 +120,23 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     // sm bcast is non-blocking, need to block before leaving coll
     // TODO: desing reset-system that doesn't block 
         // hard-reset by rank 0 or last rank, and  check in arrival that arrival_pos < world_size
+
+    // DELETEME
+    if (mpi_rank == 0) {
+        int64_t* arrival_arr_tmp = bkpap_module->local_syncstructure->arrival_arr_attr.address;
+        int64_t* count_arr_tmp = bkpap_module->local_syncstructure->counter_attr.address;
+        char arrival_str[128] = { '\0' };
+        _bk_fill_array_str_ld(bkpap_module->ss_arrival_arr_len, arrival_arr_tmp, 128, arrival_str);
+        char count_str[128] = { '\0' };
+        _bk_fill_array_str_ld(bkpap_module->ss_counter_len, count_arr_tmp, 128, count_str);
+        BKPAP_OUTPUT("rank 0 leaving, arirval_arr: %s, count_arr: %s", arrival_str, count_str);
+    }
+    // DELETEME
+
+    // find way to safely DELETEME
     comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
 
-    ret = mca_coll_bkpap_leave_inter(bkpap_module, arrival_pos);
+    ret = mca_coll_bkpap_leave_ss(bkpap_module, comm, arrival_pos);
     _BK_CHK_RET(ret, "leave inter failed");
 
     return ret;
@@ -205,17 +265,50 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             goto bkpap_ar_fallback;
         }
 
-        ret = mca_coll_bkpap_wireup_postbuffs(alg, bkpap_module, ss_comm);
+        int num_postbufs = 3; // should depend on component.alg
+        ret = mca_coll_bkpap_wireup_postbuffs(num_postbufs, bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
             goto bkpap_ar_fallback;
         }
 
-        ret = mca_coll_bkpap_wireup_syncstructure(bkpap_module, ss_comm);
+        int k = mca_coll_bkpap_component.allreduce_k_value;
+        size_t counter_arr_len = 0; // log_k(wsize);
+        size_t arrival_arr_len = 0; // wsize + wsize/k + wsize/k^2 + wsize/k^3 ...
+        for (int i = 1; i < ompi_comm_size(ss_comm); i *= k)
+            counter_arr_len++;
+        int64_t* arrival_arr_offsets_tmp = calloc(counter_arr_len, sizeof(*arrival_arr_offsets_tmp));
+
+        for (size_t i = 0; i < counter_arr_len; i++) {
+            int k_pow_i = 1;
+            for (size_t j = 0; j < i; j++)
+                k_pow_i *= k;
+            arrival_arr_len += (ompi_comm_size(ss_comm) / k_pow_i);
+            if ((i + 1) != counter_arr_len)
+                arrival_arr_offsets_tmp[i + 1] = (ompi_comm_size(ss_comm) / k_pow_i);
+        }
+
+        bkpap_module->ss_counter_len = counter_arr_len;
+        bkpap_module->ss_arrival_arr_len = arrival_arr_len;
+        bkpap_module->ss_arrival_arr_offsets = arrival_arr_offsets_tmp;
+        arrival_arr_offsets_tmp = NULL;
+
+        ret = mca_coll_bkpap_wireup_syncstructure(counter_arr_len, arrival_arr_len, bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Syncstructure Wireup Failed, fallingback");
             goto bkpap_ar_fallback;
         }
+
+        if (0 == ompi_comm_rank(ss_comm)) {
+            int64_t* arrival_arr_tmp = bkpap_module->local_syncstructure->arrival_arr_attr.address;
+            int64_t* count_arr_tmp = bkpap_module->local_syncstructure->counter_attr.address;
+            char arrival_str[128] = { '\0' };
+            _bk_fill_array_str_ld(bkpap_module->ss_arrival_arr_len, arrival_arr_tmp, 128, arrival_str);
+            char count_str[128] = { '\0' };
+            _bk_fill_array_str_ld(bkpap_module->ss_counter_len, count_arr_tmp, 128, count_str);
+            BKPAP_OUTPUT("SS initalized at rank 0, arirval_arr: %s, count_arr: %s", arrival_str, count_str);
+        }
+
         bkpap_module->ucp_is_initialized = 1;
     }
 

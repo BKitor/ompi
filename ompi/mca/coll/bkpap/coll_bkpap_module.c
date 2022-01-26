@@ -18,6 +18,8 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	module->remote_syncstructure_counter_rkey = NULL;
 	module->remote_syncstructure_counter_addr = 0;
 
+	free(module->ss_arrival_arr_offsets);
+	module->ss_arrival_arr_offsets = NULL;
 	if (NULL != module->local_syncstructure) {
 		if (NULL != module->local_syncstructure->counter_mem_h)
 			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->counter_mem_h);
