@@ -28,18 +28,12 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .postbuff_size = BKPAP_POSTBUF_SIZE,
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
-    .out_stream = -1,
     .priority = 35,
     .disabled = 0,
 };
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_threads) {
     int ret;
-#if OPAL_ENABLE_DEBUG
-    if (ompi_coll_base_framework.framework_verbose) {
-        mca_coll_bkpap_component.out_stream = opal_output_open(NULL);
-    }
-#endif  /* OPAL_ENABLE_DEBUG */
 
     // TODO: this isn't the place to do this, it's bad form to do allocations in init_query
     // a proper solution would involve ref-counters and construction/destruction with modules
