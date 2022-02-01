@@ -224,6 +224,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     mca_coll_base_module_t* module) {
     mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
     int ret = OMPI_SUCCESS, alg = mca_coll_bkpap_component.allreduce_alg;
+    size_t dsize = -1, total_dsize = -1;
 
     if (OPAL_UNLIKELY(alg >= BKPAP_ALLREDUCE_ALG_COUNT)) {
         BKPAP_ERROR("Selected alg %d not available, change OMPI_MCA_coll_bkpap_allreduce_alg", alg);
@@ -232,6 +233,13 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
     if (!ompi_op_is_commute(op)) {
         BKPAP_ERROR("Commutative operation, going to fallback");
+        goto bkpap_ar_fallback;
+    }
+
+    ompi_datatype_type_size(dtype, &dsize);
+    total_dsize = dsize * (ptrdiff_t)count;
+    if (total_dsize > mca_coll_bkpap_component.postbuff_size) {
+        BKPAP_ERROR("Message size is bigger than postbuf, falling back");
         goto bkpap_ar_fallback;
     }
 
@@ -274,7 +282,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             goto bkpap_ar_fallback;
         }
 
-        int num_postbufs = 3; // should depend on component.alg
+        int num_postbufs = (mca_coll_bkpap_component.allreduce_k_value - 1); // should depend on component.alg
         ret = mca_coll_bkpap_wireup_postbuffs(num_postbufs, bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
@@ -294,7 +302,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
                 k_pow_i *= k;
             arrival_arr_len += (ompi_comm_size(ss_comm) / k_pow_i);
             if ((i + 1) != counter_arr_len)
-                arrival_arr_offsets_tmp[i + 1] = (ompi_comm_size(ss_comm) / k_pow_i);
+                arrival_arr_offsets_tmp[i + 1] = arrival_arr_offsets_tmp[i] + (ompi_comm_size(ss_comm) / k_pow_i);
         }
 
         bkpap_module->ss_counter_len = counter_arr_len;

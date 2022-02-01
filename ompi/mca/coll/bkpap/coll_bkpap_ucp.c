@@ -188,7 +188,7 @@ bkpap_ep_wireup_err:
 }
 
 // TODO: Number of allocated postsbufs should be determined by the alg
-int mca_coll_bkpap_wireup_postbuffs(int nub_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
+int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
 #define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_remotepostbuf_wireup_err;}
 #define _BKPAP_CHK_UCP(_status) if(UCS_OK != _status){BKPAP_ERROR("UCP op in postbuf wireup failed"); ret = OMPI_ERROR; goto bkpap_remotepostbuf_wireup_err;}
 #define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in postbuf wireup failed"); goto bkpap_remotepostbuf_wireup_err;}
@@ -209,13 +209,13 @@ int mca_coll_bkpap_wireup_postbuffs(int nub_bufs, mca_coll_bkpap_module_t* modul
 		UCP_MEM_MAP_PARAM_FIELD_LENGTH |
 		UCP_MEM_MAP_PARAM_FIELD_FLAGS;
 	mem_map_params.address = NULL;
-	mem_map_params.length = mca_coll_bkpap_component.postbuff_size * (mca_coll_bkpap_component.allreduce_k_value - 1);
+	mem_map_params.length = mca_coll_bkpap_component.postbuff_size * (num_bufs);
 	mem_map_params.flags = UCP_MEM_MAP_ALLOCATE | UCP_MEM_MAP_NONBLOCK;
 
 	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_postbuf_h);
 	_BKPAP_CHK_UCP(status);
 
-	mem_map_params.length = sizeof(int64_t) * (mca_coll_bkpap_component.allreduce_k_value - 1);
+	mem_map_params.length = sizeof(int64_t) * (num_bufs);
 	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_dbell_h);
 	_BKPAP_CHK_UCP(status);
 
@@ -227,7 +227,7 @@ int mca_coll_bkpap_wireup_postbuffs(int nub_bufs, mca_coll_bkpap_module_t* modul
 	status = ucp_mem_query(module->local_dbell_h, &module->local_dbell_attrs);
 	_BKPAP_CHK_UCP(status);
 	int64_t* dbells = module->local_dbell_attrs.address;
-	for (int i = 0; i < (mca_coll_bkpap_component.allreduce_k_value - 1); i++)
+	for (int i = 0; i < (num_bufs); i++)
 		dbells[i] = BKPAP_DBELL_UNSET;
 	dbells = NULL;
 
