@@ -64,7 +64,7 @@ dnl         application when opal is built as a static library.
 dnl   * CPPFLAGS, LDFLAGS - Updated opal_pmix_CPPFLAGS and
 dnl         opal_pmix_LDFLAGS.
 AC_DEFUN([OPAL_CONFIG_PMIX], [
-    OPAL_VAR_SCOPE_PUSH([external_pmix_happy internal_pmix_happy internal_pmix_args internal_pmix_libs internal_pmix_CPPFLAGS])
+    OPAL_VAR_SCOPE_PUSH([external_pmix_happy internal_pmix_happy internal_pmix_args internal_pmix_wrapper_libs internal_pmix_CPPFLAGS])
 
     opal_show_subtitle "Configuring PMIx"
 
@@ -87,21 +87,20 @@ AC_DEFUN([OPAL_CONFIG_PMIX], [
 		# desired.
 
                 internal_pmix_args="--without-tests-examples --enable-pmix-binaries --disable-pmix-backward-compatibility --disable-visibility"
-                internal_pmix_libs=
+                internal_pmix_wrapper_libs=
                 internal_pmix_CPPFLAGS=
 
                 AS_IF([test "$opal_libevent_mode" = "internal"],
-                      [internal_pmix_args="$internal_pmix_args --with-libevent=cobuild"
-                       internal_pmix_CPPFLAGS="$internal_pmix_CPPFLAGS $opal_libevent_CPPFLAGS"
-                       internal_pmix_libs="$internal_pmix_libs $opal_libevent_LIBS"])
+                      [internal_pmix_args="$internal_pmix_args --with-libevent --disable-libevent-lib-checks"
+                       internal_pmix_args="$internal_pmix_args --with-libevent-extra-libs=\"$opal_libevent_LIBS\""
+                       internal_pmix_wrapper_libs="$internal_pmix_wrapper_libs \"$opal_libevent_WRAPPER_LIBS\""
+                       internal_pmix_CPPFLAGS="$internal_pmix_CPPFLAGS $opal_libevent_CPPFLAGS"])
 
                 AS_IF([test "$opal_hwloc_mode" = "internal"],
-                      [internal_pmix_args="$internal_pmix_args --with-hwloc=cobuild"
-                      internal_pmix_CPPFLAGS="$internal_pmix_CPPFLAGS $opal_hwloc_CPPFLAGS"
-                      internal_pmix_libs="$internal_pmix_libs $opal_hwloc_LIBS"])
-
-                AS_IF([test ! -z "$internal_pmix_libs"],
-                      [internal_pmix_args="$internal_pmix_args --with-pmix-extra-lib=\"$internal_pmix_libs\""])
+                      [internal_pmix_args="$internal_pmix_args --disable-hwloc-lib-checks"
+                       internal_pmix_args="$internal_pmix_args --with-hwloc-extra-libs=\"$opal_hwloc_LIBS\""
+                       internal_pmix_wrapper_libs="$internal_pmix_wrapper_libs \"$opal_hwloc_WRAPPER_LIBS\""
+                       internal_pmix_CPPFLAGS="$internal_pmix_CPPFLAGS $opal_hwloc_CPPFLAGS"])
 
                 if test "$WANT_DEBUG" = "1"; then
                      internal_pmix_args="$internal_pmix_args --enable-debug"
@@ -114,6 +113,8 @@ AC_DEFUN([OPAL_CONFIG_PMIX], [
                 OPAL_SUBDIR_ENV_CLEAN([opal_pmix_configure])
                 AS_IF([test -n "$internal_pmix_CPPFLAGS"],
                       [OPAL_SUBDIR_ENV_APPEND([CPPFLAGS], [$internal_pmix_CPPFLAGS])])
+                AS_IF([test -n "$internal_pmix_wrapper_libs"],
+                      [inernal_pmix_args="$internal_pmix_args --with-wrapper-libs=\"$internal_pmix_wrapper_libs\""])
                 PAC_CONFIG_SUBDIR_ARGS([3rd-party/openpmix], [$internal_pmix_args],
                                        [[--with-libevent=internal], [--with-hwloc=internal],
                                         [--with-libevent=external], [--with-hwloc=external],
@@ -151,7 +152,7 @@ AC_DEFUN([OPAL_CONFIG_PMIX], [
     AS_IF([test "$opal_pmix_mode" = "internal"],
           [pkg_config_file="${OMPI_TOP_BUILDDIR}/3rd-party/openpmix/maint/pmix.pc"
            PKG_CONFIG_PATH="${OMPI_TOP_BUILDDIR}/3rd-party/openpmix/maint:${PKG_CONFIG_PATH}"],
-          [test -n "$with_hwloc"],
+          [test -n "$with_pmix"],
           [pkg_config_file="${with_pmix}/lib/pkgconfig/pmix.pc"
            PKG_CONFIG_PATH="${with_pmix}/lib/pkgconfig:${PKG_CONFIG_PATH}"],
           [pkg_config_file="pmix"])
@@ -164,8 +165,10 @@ AC_DEFUN([OPAL_CONFIG_PMIX], [
           [opal_pmix_WRAPPER_LDFLAGS="$pkg_config_ldflags"
            opal_pmix_WRAPPER_LIBS="$pkg_config_libs"],
           [# guess that what we have from compiling OMPI is good enough
-           opal_pmix_WRAPPER_LDFLAGS="$opal_hwloc_LDFLAGS"
-           opal_pmix_WRAPPER_LIBS="$opal_hwloc_LIBS"])
+           AS_IF([test -z "$opal_pmix_WRAPPER_LDFLAGS"],
+                 [opal_pmix_WRAPPER_LDFLAGS="$opal_pmix_LDFLAGS"])
+           AS_IF([test -z "$opal_pmix_WRAPPER_LIBS"],
+                 [opal_pmix_WRAPPER_LIBS="$opal_pmix_LIBS"])])
 
     OPAL_WRAPPER_FLAGS_ADD([LDFLAGS], [$opal_pmix_WRAPPER_LDFLAGS])
     OPAL_WRAPPER_FLAGS_ADD([LIBS], [$opal_pmix_WRAPPER_LIBS])
@@ -251,6 +254,7 @@ AC_DEFUN([_OPAL_CONFIG_PMIX_INTERNAL_POST], [
     opal_pmix_CPPFLAGS="-I$OMPI_TOP_BUILDDIR/3rd-party/openpmix/include -I$OMPI_TOP_SRCDIR/3rd-party/openpmix/include"
     opal_pmix_LDFLAGS=""
     opal_pmix_LIBS="$OMPI_TOP_BUILDDIR/3rd-party/openpmix/src/libpmix.la"
+    opal_pmix_WRAPPER_LIBS="-lpmix $opal_hwloc_WRAPPER_LIBS $opal_libevent_WRAPPER_LIBS"
 
     CPPFLAGS="$CPPFLAGS $opal_pmix_CPPFLAGS"
 

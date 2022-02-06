@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2018 Cisco Systems, Inc.  All rights reserved
+ * Copyright (c) 2006-2022 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2009 University of Houston. All rights reserved.
@@ -402,7 +402,9 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided,
     ompi_proc_t** procs;
     size_t nprocs;
     char *error = NULL;
+#if OPAL_USING_INTERNAL_PMIX
     char *evar;
+#endif
     volatile bool active;
     bool background_fence = false;
     pmix_info_t info[2];
@@ -728,7 +730,7 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided,
     if (OMPI_TIMING_ENABLED && !opal_pmix_base_async_modex &&
             opal_pmix_collect_all_data && !ompi_singleton) {
         if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, NULL, 0))) {
-            ret - opal_pmix_convert_status(rc);
+            ret = opal_pmix_convert_status(rc);
             error = "timing: pmix-barrier-1 failed";
             goto error;
         }
@@ -875,12 +877,6 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided,
     /* initialize windows */
     if (OMPI_SUCCESS != (ret = ompi_win_init())) {
         error = "ompi_win_init() failed";
-        goto error;
-    }
-
-    /* initialize attribute meta-data structure for comm/win/dtype */
-    if (OMPI_SUCCESS != (ret = ompi_attr_init())) {
-        error = "ompi_attr_init() failed";
         goto error;
     }
 

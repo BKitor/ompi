@@ -68,6 +68,7 @@
 #define MPI_Comm_get_parent PMPI_Comm_get_parent
 #define MPI_Comm_group PMPI_Comm_group
 #define MPI_Comm_idup PMPI_Comm_idup
+#define MPI_Comm_idup_with_info PMPI_Comm_idup_with_info
 #define MPI_Comm_join PMPI_Comm_join
 #define MPI_Comm_rank PMPI_Comm_rank
 #define MPI_Comm_remote_group PMPI_Comm_remote_group
@@ -176,6 +177,8 @@
 #define MPI_Iscatter PMPI_Iscatter
 #define MPI_Iscatterv PMPI_Iscatterv
 #define MPI_Isend PMPI_Isend
+#define MPI_Isendrecv PMPI_Isendrecv
+#define MPI_Isendrecv_replace PMPI_Isendrecv_replace
 #define MPI_Issend PMPI_Issend
 #define MPI_Lookup_name PMPI_Lookup_name
 #define MPI_Mprobe PMPI_Mprobe

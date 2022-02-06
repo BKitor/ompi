@@ -27,6 +27,10 @@
 #define MPI_Irsend_f08 PMPI_Irsend_f08
 #define MPI_Isend PMPI_Isend
 #define MPI_Isend_f08 PMPI_Isend_f08
+#define MPI_Isendrecv PMPI_Isendrecv
+#define MPI_Isendrecv_f08 PMPI_Isendrecv_f08
+#define MPI_Isendrecv_replace PMPI_Isendrecv_replace
+#define MPI_Isendrecv_replace_f08 PMPI_Isendrecv_replace_f08
 #define MPI_Issend PMPI_Issend
 #define MPI_Issend_f08 PMPI_Issend_f08
 #define MPI_Precv_init PMPI_Precv_init
@@ -277,6 +281,8 @@
 #define MPI_Comm_dup_with_info_f08 PMPI_Comm_dup_with_info_f08
 #define MPI_Comm_idup PMPI_Comm_idup
 #define MPI_Comm_idup_f08 PMPI_Comm_idup_f08
+#define MPI_Comm_idup_with_info PMPI_Comm_idup_with_info
+#define MPI_Comm_idup_with_info_f08 PMPI_Comm_idup_with_info_f08
 #define MPI_Comm_free PMPI_Comm_free
 #define MPI_Comm_free_f08 PMPI_Comm_free_f08
 #define MPI_Comm_free_keyval PMPI_Comm_free_keyval

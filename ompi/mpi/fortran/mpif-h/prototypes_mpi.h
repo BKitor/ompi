@@ -139,6 +139,7 @@ PN2(void, MPI_Comm_disconnect, mpi_comm_disconnect, MPI_COMM_DISCONNECT, (MPI_Fi
 PN2(void, MPI_Comm_dup, mpi_comm_dup, MPI_COMM_DUP, (MPI_Fint *comm, MPI_Fint *newcomm, MPI_Fint *ierr));
 PN2(void, MPI_Comm_dup_with_info, mpi_comm_dup_with_info, MPI_COMM_DUP_WITH_INFO, (MPI_Fint *comm, MPI_Fint *info, MPI_Fint *newcomm, MPI_Fint *ierr));
 PN2(void, MPI_Comm_idup, mpi_comm_idup, MPI_COMM_IDUP, (MPI_Fint *comm, MPI_Fint *newcomm, MPI_Fint *request, MPI_Fint *ierr));
+PN2(void, MPI_Comm_idup_with_info, mpi_comm_idup_with_info, MPI_COMM_IDUP_WITH_INFO, (MPI_Fint *comm, MPI_Fint *info, MPI_Fint *newcomm, MPI_Fint *request, MPI_Fint *ierr));
 PN2(void, MPI_Comm_free_keyval, mpi_comm_free_keyval, MPI_COMM_FREE_KEYVAL, (MPI_Fint *comm_keyval, MPI_Fint *ierr));
 PN2(void, MPI_Comm_free, mpi_comm_free, MPI_COMM_FREE, (MPI_Fint *comm, MPI_Fint *ierr));
 PN2(void, MPI_Comm_get_attr, mpi_comm_get_attr, MPI_COMM_GET_ATTR, (MPI_Fint *comm, MPI_Fint *comm_keyval, MPI_Aint *attribute_val, ompi_fortran_logical_t *flag, MPI_Fint *ierr));
@@ -316,6 +317,8 @@ PN2(void, MPI_Iprobe, mpi_iprobe, MPI_IPROBE, (MPI_Fint *source, MPI_Fint *tag, 
 PN2(void, MPI_Irecv, mpi_irecv, MPI_IRECV, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *source, MPI_Fint *tag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
 PN2(void, MPI_Irsend, mpi_irsend, MPI_IRSEND, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *dest, MPI_Fint *tag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
 PN2(void, MPI_Isend, mpi_isend, MPI_ISEND, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *dest, MPI_Fint *tag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
+PN2(void, MPI_Isendrecv, mpi_isendrecv, MPI_ISENDRECV, (char *sendbuf, MPI_Fint *sendcount, MPI_Fint *sendtype, MPI_Fint *dest, MPI_Fint *sendtag, char *recvbuf, MPI_Fint *recvcount, MPI_Fint *recvtype, MPI_Fint *source, MPI_Fint *recvtag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
+PN2(void, MPI_Isendrecv_replace, mpi_isendrecv_replace, MPI_ISENDRECV_REPLACE, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *dest, MPI_Fint *sendtag, MPI_Fint *source, MPI_Fint *recvtag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
 PN2(void, MPI_Issend, mpi_issend, MPI_ISSEND, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *dest, MPI_Fint *tag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
 PN2(void, MPI_Is_thread_main, mpi_is_thread_main, MPI_IS_THREAD_MAIN, (ompi_fortran_logical_t *flag, MPI_Fint *ierr));
 PN2(void, MPI_Keyval_create, mpi_keyval_create, MPI_KEYVAL_CREATE, (ompi_fint_copy_attr_function copy_fn, ompi_fint_delete_attr_function delete_fn, MPI_Fint *keyval, MPI_Fint *extra_state, MPI_Fint *ierr));

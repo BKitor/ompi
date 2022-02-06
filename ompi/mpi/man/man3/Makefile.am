@@ -124,6 +124,7 @@ TEMPLATE_FILES = \
         MPI_Bcast_init.3in \
         MPI_Comm_c2f.3in \
         MPI_Comm_idup.3in \
+        MPI_Comm_idup_with_info.3in \
         MPI_Comm_f2c.3in \
         MPI_Comm_free.3in \
         MPI_Comm_free_keyval.3in \
@@ -259,6 +260,8 @@ TEMPLATE_FILES = \
         MPI_Irecv.3in \
         MPI_Irsend.3in \
         MPI_Isend.3in \
+        MPI_Isendrecv.3in \
+        MPI_Isendrecv_replace.3in \
         MPI_Issend.3in \
         MPI_Is_thread_main.3in \
         MPI_Keyval_create.3in \

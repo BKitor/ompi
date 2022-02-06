@@ -18,6 +18,9 @@
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2016      IBM Corporation.  All rights reserved.
 # Copyright (c) 2018      FUJITSU LIMITED.  All rights reserved.
+# Copyright (c) 2021      Triad National Security, LLC. All rights
+#                         reserved.
+#
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -182,6 +185,7 @@ lib@OMPI_LIBMPI_NAME@_mpifh_la_SOURCES += \
         comm_dup_f.c \
         comm_dup_with_info_f.c \
         comm_idup_f.c \
+        comm_idup_with_info_f.c \
         comm_free_f.c \
         comm_free_keyval_f.c \
         comm_get_attr_f.c \
@@ -349,6 +353,8 @@ lib@OMPI_LIBMPI_NAME@_mpifh_la_SOURCES += \
         ireduce_scatter_block_f.c \
         irsend_f.c \
         isend_f.c \
+        isendrecv_f.c \
+        isendrecv_replace_f.c \
         iscan_f.c \
         iscatter_f.c \
         iscatterv_f.c \

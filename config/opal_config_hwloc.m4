@@ -92,8 +92,10 @@ AC_DEFUN([OPAL_CONFIG_HWLOC], [
           [opal_hwloc_WRAPPER_LDFLAGS="$pkg_config_ldflags"
            opal_hwloc_WRAPPER_LIBS="$pkg_config_libs"],
           [# guess that what we have from compiling OMPI is good enough
-           opal_hwloc_WRAPPER_LDFLAGS="$opal_hwloc_LDFLAGS"
-           opal_hwloc_WRAPPER_LIBS="$opal_hwloc_LIBS"])
+           AS_IF([test -z "$opal_hwloc_WRAPPER_LDFLAGS"],
+                 [opal_hwloc_WRAPPER_LDFLAGS="$opal_hwloc_LDFLAGS"])
+           AS_IF([test -z "$opal_hwloc_WRAPPER_LIBS"],
+                 [opal_hwloc_WRAPPER_LIBS="$opal_hwloc_LIBS"])])
 
     OPAL_WRAPPER_FLAGS_ADD([LDFLAGS], [$opal_hwloc_WRAPPER_LDFLAGS])
     OPAL_WRAPPER_FLAGS_ADD([LIBS], [$opal_hwloc_WRAPPER_LIBS])
@@ -104,7 +106,9 @@ AC_DEFUN([OPAL_CONFIG_HWLOC], [
     OPAL_3RDPARTY_EXTRA_DIST="$OPAL_3RDPARTY_EXTRA_DIST hwloc_tarball"
     OPAL_3RDPARTY_DISTCLEAN_DIRS="$OPAL_3RDPARTY_DISTCLEAN_DIRS hwloc_directory"
 
+    AC_SUBST(opal_hwloc_CPPFLAGS)
     AC_SUBST(opal_hwloc_LIBS)
+    AC_SUBST(opal_hwloc_LDFLAGS)
 
     OPAL_SUMMARY_ADD([[Miscellaneous]], [[hwloc]], [hwloc], [$opal_hwloc_mode])
 
@@ -142,16 +146,16 @@ AC_DEFUN([_OPAL_CONFIG_HWLOC_EXTERNAL], [
     LIBS="$opal_hwloc_LIBS_save $opal_hwloc_LIBS"
 
     AS_IF([test "$opal_hwloc_external_support" = "yes"],
-          [AC_MSG_CHECKING([if external hwloc version is 1.6 or greater])
+          [AC_MSG_CHECKING([if external hwloc version is 1.11.0 or greater])
            AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <hwloc.h>]],
                                [[
 #if HWLOC_API_VERSION < 0x00010500
-#error "hwloc API version is less than 0x00010500"
+#error "hwloc API version is less than 0x00011100"
 #endif
                                ]])],
                    [AC_MSG_RESULT([yes])],
                    [AC_MSG_RESULT([no])
-                    AC_MSG_WARN([external hwloc version is too old (1.5 or later required)])
+                    AC_MSG_WARN([external hwloc version is too old (1.11.0 or later required)])
                     opal_hwloc_external_support="no"])])
 
     AS_IF([test "$opal_hwloc_external_support" = "yes"],
@@ -176,15 +180,39 @@ dnl external hwloc is not going to be used.  Assumes that if
 dnl this function is called, that success means the internal package
 dnl will be used.
 AC_DEFUN([_OPAL_CONFIG_HWLOC_INTERNAL], [
-    OPAL_VAR_SCOPE_PUSH(subconfig_happy subconfig_prefix internal_hwloc_location)
+    OPAL_VAR_SCOPE_PUSH([subconfig_happy internal_hwloc_location extra_configure_args found_enable_plugins hwloc_config_arg])
 
-    AS_IF([test ! -z $prefix], [subconfig_prefix="--prefix=$prefix"])
+    extra_configure_args=
+
+    # look for a --{enable/disable}-plugins option in the top level
+    # configure arguments, so that we can add --enable-plugins if
+    # appropriate.
+    found_enable_plugins=0
+    eval "set x $ac_configure_args"
+    shift
+    for hwloc_config_arg
+    do
+	case $hwloc_config_arg in
+        --enable-plugins|--enable-plugins=*|--disable-plugins)
+            found_enable_plugins=1
+	    ;;
+	esac
+    done
+
+    # while the plugins in hwloc are not explicitly using Open MPI's dlopen
+    # interface, it seems rude to enable plugins in hwloc if the builder asked
+    # us not to use plugins in Open MPI.  So only enable plugins in hwloc if there's
+    # a chance we're going to do so.  We enable plugins by default so that libhwloc
+    # does not end up with a dependency on libcuda, which would mean everything else
+    # would end up with a dependency on libcuda (and similar).
+    AS_IF([test $found_enable_plugins -eq 0 -a "$enable_dlopen" != "no"],
+          [extra_configure_args="--enable-plugins"])
 
     # Note: To update the version of hwloc shipped, update the
     # constant in autogen.pl.
     OPAL_EXPAND_TARBALL([3rd-party/hwloc_tarball], [3rd-party/hwloc_directory], [configure])
     OPAL_SUBDIR_ENV_CLEAN([opal_hwloc_configure])
-    PAC_CONFIG_SUBDIR_ARGS([3rd-party/hwloc_directory], [], [[--enable-debug]],
+    PAC_CONFIG_SUBDIR_ARGS([3rd-party/hwloc_directory], [$extra_configure_args], [[--enable-debug]],
         [subconfig_happy=1], [subconfig_happy=0])
     OPAL_SUBDIR_ENV_RESTORE([opal_hwloc_configure])
 
@@ -199,6 +227,7 @@ AC_DEFUN([_OPAL_CONFIG_HWLOC_INTERNAL], [
          # our tree and in the mean time are referenced by their .la
          # files.
          opal_hwloc_LIBS="$OMPI_TOP_BUILDDIR/$internal_hwloc_location/hwloc/libhwloc.la"
+         opal_hwloc_WRAPPER_LIBS="-lhwloc"
 
          opal_hwloc_header="$OMPI_TOP_BUILDDIR/$internal_hwloc_location/include/hwloc.h"
 

@@ -95,6 +95,7 @@ linked_files = \
         pcomm_dup_f.c \
         pcomm_dup_with_info_f.c \
         pcomm_idup_f.c \
+        pcomm_idup_with_info_f.c \
         pcomm_free_f.c \
         pcomm_free_keyval_f.c \
         pcomm_get_attr_f.c \
@@ -265,6 +266,8 @@ linked_files = \
         piscatter_f.c \
         piscatterv_f.c \
         pisend_f.c \
+        pisendrecv_f.c \
+        pisendrecv_replace_f.c \
         pissend_f.c \
         pis_thread_main_f.c \
         pkeyval_create_f.c \

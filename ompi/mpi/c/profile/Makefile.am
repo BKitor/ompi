@@ -101,6 +101,7 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         pcomm_dup.c \
         pcomm_dup_with_info.c \
         pcomm_idup.c \
+        pcomm_idup_with_info.c \
         pcomm_f2c.c \
         pcomm_free.c \
         pcomm_free_keyval.c \

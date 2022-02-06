@@ -161,6 +161,7 @@ mpi_api_files = \
         comm_dup_f08.F90 \
         comm_dup_with_info_f08.F90 \
         comm_idup_f08.F90 \
+        comm_idup_with_info_f08.F90 \
         comm_free_f08.F90 \
         comm_free_keyval_f08.F90 \
         comm_get_attr_f08.F90 \
@@ -335,6 +336,8 @@ mpi_api_files = \
         iscatter_f08.F90 \
         iscatterv_f08.F90 \
         isend_f08.F90 \
+        isendrecv_f08.F90 \
+        isendrecv_replace_f08.F90 \
         issend_f08.F90 \
         is_thread_main_f08.F90 \
         lookup_name_f08.F90 \

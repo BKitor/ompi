@@ -28,6 +28,13 @@
 
 include $(top_srcdir)/Makefile.ompi-rules
 
+# Note that Automake's Fortran-buidling rules uses CPPFLAGS and
+# AM_CPPFLAGS.  This can cause weirdness (e.g.,
+# https://github.com/open-mpi/ompi/issues/7253).  Let's just zero
+# those out and rely on AM_FCFLAGS.
+CPPFLAGS =
+AM_CPPFLAGS =
+
 # This Makefile is only relevant if we're building the "use mpi_f08"
 # MPI bindings.
 if OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS
@@ -97,6 +104,7 @@ pmpi_api_files = \
         pcomm_dup_f08.F90 \
         pcomm_dup_with_info_f08.F90 \
         pcomm_idup_f08.F90 \
+        pcomm_idup_with_info_f08.F90 \
         pcomm_free_f08.F90 \
         pcomm_free_keyval_f08.F90 \
         pcomm_get_attr_f08.F90 \
@@ -271,6 +279,8 @@ pmpi_api_files = \
         piscatter_f08.F90 \
         piscatterv_f08.F90 \
         pisend_f08.F90 \
+        pisendrecv_f08.F90 \
+        pisendrecv_replace_f08.F90 \
         pissend_f08.F90 \
         pis_thread_main_f08.F90 \
         plookup_name_f08.F90 \
