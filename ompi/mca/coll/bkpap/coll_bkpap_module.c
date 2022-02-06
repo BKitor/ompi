@@ -9,22 +9,33 @@ static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 // TODO: Fix issue of hanging on ucp_ep_destroy()
 // started after transitioning postbuf size from (postbuf_size * k) to (postbuf_size * (k-1)) 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
-	if (NULL != module->remote_syncstructure_arrival_arr_rkey)
-		ucp_rkey_destroy(module->remote_syncstructure_arrival_arr_rkey);
-	module->remote_syncstructure_arrival_arr_rkey = NULL;
-	module->remote_syncstructure_arrival_arr_addr = 0;
-	if (NULL != module->remote_syncstructure_counter_rkey)
-		ucp_rkey_destroy(module->remote_syncstructure_counter_rkey);
-	module->remote_syncstructure_counter_rkey = NULL;
-	module->remote_syncstructure_counter_addr = 0;
 
-	free(module->ss_arrival_arr_offsets);
-	module->ss_arrival_arr_offsets = NULL;
-	if (NULL != module->local_syncstructure) {
-		if (NULL != module->local_syncstructure->counter_mem_h)
-			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->counter_mem_h);
-		if (NULL != module->local_syncstructure->arrival_arr_mem_h)
-			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_syncstructure->arrival_arr_mem_h);
+	if (NULL != module->remote_syncstructure) {
+		for (int i = 0; i < module->num_syncstructures; i++) {
+			mca_coll_bkpap_remote_syncstruct_t *remote_ss_tmp = &(module->remote_syncstructure[i]);
+			free(remote_ss_tmp->ss_arrival_arr_offsets);
+			remote_ss_tmp->ss_arrival_arr_offsets = NULL;
+			if (NULL != remote_ss_tmp->arrival_arr_rkey)
+				ucp_rkey_destroy(remote_ss_tmp->arrival_arr_rkey);
+			remote_ss_tmp->arrival_arr_rkey = NULL;
+			remote_ss_tmp->arrival_arr_addr = 0;
+			if (NULL != remote_ss_tmp->counter_rkey)
+				ucp_rkey_destroy(remote_ss_tmp->counter_rkey);
+			remote_ss_tmp->counter_rkey = NULL;
+			remote_ss_tmp->counter_addr = 0;
+		}
+		free(module->remote_syncstructure);
+		module->remote_syncstructure = NULL;
+	}
+
+	if (module->rank == 0) {
+		for (int i = 0; i < module->num_syncstructures; i++) {
+			mca_coll_bkpap_local_syncstruct_t *local_ss_tmp = &(module->local_syncstructure[i]);
+			if (NULL != local_ss_tmp->counter_mem_h)
+				ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, local_ss_tmp->counter_mem_h);
+			if (NULL != local_ss_tmp->arrival_arr_mem_h)
+				ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, local_ss_tmp->arrival_arr_mem_h);
+		}
 		free(module->local_syncstructure);
 		module->local_syncstructure = NULL;
 	}
@@ -48,16 +59,16 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	free(module->remote_pbuffs.dbell_addr_arr);
 	module->remote_pbuffs.dbell_addr_arr = NULL;
 
-	if (NULL != module->local_postbuf_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_postbuf_h);
+	if (NULL != module->local_pbuffs.postbuf_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.postbuf_h);
 	}
-	module->local_postbuf_h = NULL;
-	module->local_postbuf_attrs.address = NULL;
-	if (NULL != module->local_dbell_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_dbell_h);
+	module->local_pbuffs.postbuf_h = NULL;
+	module->local_pbuffs.postbuf_attrs.address = NULL;
+	if (NULL != module->local_pbuffs.dbell_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.dbell_h);
 	}
-	module->local_dbell_h = NULL;
-	module->local_dbell_attrs.address = NULL;
+	module->local_pbuffs.dbell_h = NULL;
+	module->local_pbuffs.dbell_attrs.address = NULL;
 
 	for (int32_t i = 0; i < module->wsize; i++) {
 		if (NULL == module->ucp_ep_arr) break;

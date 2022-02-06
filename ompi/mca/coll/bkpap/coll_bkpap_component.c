@@ -26,6 +26,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .ucp_worker_addr_len = 0,
 
     .postbuff_size = BKPAP_POSTBUF_SIZE,
+    .pipeline_segment_size = BKPAP_SEGMENT_SIZE,
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
     .priority = 35,
@@ -52,7 +53,7 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_k_value);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "allreduce_alg", "Select pap-awareness alg for inter-stage allreduce, {0:ktree, 1:RSA}",
+        "allreduce_alg", "Select pap-awareness alg for inter-stage allreduce, {0:ktree, 1:ktree-pipeline, 2:RSA}",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_alg);
 
@@ -70,6 +71,11 @@ static int bkpap_register(void) {
         "postbuff_size", "Size of preposted buffer, default 64MB",
         MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.postbuff_size);
+
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "pipeline_segment_size", "Segment size for pipeline",
+        MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.pipeline_segment_size);
 
     return OMPI_SUCCESS;
 }
