@@ -120,6 +120,10 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     }
     BKPAP_PROFILE("rank: %d, get_leader_of_tree", mpi_rank);
 
+    // Good for profiling
+    // comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
+    // BKPAP_PROFILE("rank: %d, start_bcast", mpi_rank);
+
     // intranode bcast
     ret = comm->c_coll->coll_bcast(rbuf, count, dtype, tree_root, comm, comm->c_coll->coll_bcast_module);
     _BK_CHK_RET(ret, "singlenode bcast failed");
