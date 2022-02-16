@@ -119,7 +119,7 @@ typedef struct mca_coll_bkpap_component_t {
 	int allreduce_k_value;
 	int allreduce_alg;
 	int priority;
-	int disabled;
+	int cuda;
 } mca_coll_bkpap_component_t;
 
 OMPI_MODULE_DECLSPEC extern mca_coll_bkpap_component_t mca_coll_bkpap_component;
@@ -133,7 +133,7 @@ void mca_coll_bkpap_req_init(void* request);
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wireup_postbuffs(int num_bufs, int cuda_device, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots, int num_structures, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 

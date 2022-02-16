@@ -496,7 +496,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         }
 
         int num_postbufs = (mca_coll_bkpap_component.allreduce_k_value - 1); // should depend on component.alg
-        ret = mca_coll_bkpap_wireup_postbuffs(num_postbufs, bkpap_module, ss_comm);
+        ret = mca_coll_bkpap_wireup_postbuffs(num_postbufs, -1, bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
             goto bkpap_ar_fallback;

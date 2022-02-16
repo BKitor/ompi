@@ -30,7 +30,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
     .priority = 35,
-    .disabled = 0,
+    .cuda = 0,
 };
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_threads) {
@@ -47,6 +47,17 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
 }
 
 static int bkpap_register(void) {
+
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "postbuff_size", "Size of preposted buffer, default 64MB",
+        MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.postbuff_size);
+    
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "pipeline_segment_size", "Segment size for pipeline",
+        MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.pipeline_segment_size);
+
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "allreduce_k_value", "Fannout of inter-node tree in allreduce",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
@@ -63,19 +74,9 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.priority);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "disabled", "Turn bkpap off",
-        MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.disabled);
-
-    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "postbuff_size", "Size of preposted buffer, default 64MB",
-        MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.postbuff_size);
-
-    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "pipeline_segment_size", "Segment size for pipeline",
-        MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.pipeline_segment_size);
+        "cuda", "run collective on cuda device",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.cuda);
 
     return OMPI_SUCCESS;
 }
