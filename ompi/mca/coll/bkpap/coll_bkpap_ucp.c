@@ -1,10 +1,7 @@
 #include "coll_bkpap.h"
+#include "bkpap_kernel.h"
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/pml/pml.h"
-
-#define BKPAP_CHK_MALLOC(_buf, _lbl) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto _lbl;}
-#define BKPAP_CHK_UCP(_status, _lbl) if(UCS_OK != _status){BKPAP_ERROR("UCP op in endpoint wireup failed"); ret = OMPI_ERROR; goto _lbl;}
-#define BKPAP_CHK_MPI(_ret, _lbl) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in endpoint wireup failed"); goto _lbl;}
 
 void mca_coll_bkpap_req_init(void* request) {
 	mca_coll_bkpap_req_t* r = request;
@@ -152,7 +149,7 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 		agv_remote_addr_recv_buf, agv_count_arr, agv_displ_arr, MPI_BYTE,
 		comm, comm->c_coll->coll_allgatherv_module
 	);
-	BKPAP_CHK_MPI(ret,bkpap_ep_wireup_err );
+	BKPAP_CHK_MPI(ret, bkpap_ep_wireup_err);
 
 	// for loop to populate ep_arr
 	// module->ucp_ep_arr = calloc(mpi_size, sizeof(*module->ucp_ep_arr));
@@ -179,7 +176,7 @@ bkpap_ep_wireup_err:
 	return ret;
 }
 
-int mca_coll_bkpap_wireup_postbuffs(int num_bufs, int cuda_device, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
+int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
 	int ret = OMPI_SUCCESS, mpi_size = ompi_comm_size(comm), mpi_rank = ompi_comm_rank(comm);
 	ucs_status_t status = UCS_OK;
 	ucp_mem_map_params_t mem_map_params;
@@ -241,7 +238,7 @@ int mca_coll_bkpap_wireup_postbuffs(int num_bufs, int cuda_device, mca_coll_bkpa
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
 	status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.dbell_h, &dbell_rkey_buffer, &dbell_rkey_buffer_size);
-	BKPAP_CHK_UCP(status,bkpap_remotepostbuf_wireup_err );
+	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
 	postbuf_rkey_size_arr = calloc(mpi_size, sizeof(*postbuf_rkey_size_arr));
 	BKPAP_CHK_MALLOC(postbuf_rkey_size_arr, bkpap_remotepostbuf_wireup_err);
@@ -285,7 +282,7 @@ int mca_coll_bkpap_wireup_postbuffs(int num_bufs, int cuda_device, mca_coll_bkpa
 			module->ucp_ep_arr[i],
 			agv_rkey_recv_buf + agv_displ_arr[i],
 			&module->remote_pbuffs.buffer_rkey_arr[i]);
-		BKPAP_CHK_UCP(status,bkpap_remotepostbuf_wireup_err );
+		BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 	}
 
 	agv_rkey_recv_buf_size = 0;
@@ -446,7 +443,7 @@ int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots,
 			arrival_arr_rkey_buffer = calloc(1, arrival_arr_rkey_buffer_size);
 			BKPAP_CHK_MALLOC(arrival_arr_rkey_buffer, bkpap_syncstructure_wireup_err);
 			ret = comm->c_coll->coll_bcast(arrival_arr_rkey_buffer, arrival_arr_rkey_buffer_size, MPI_BYTE, 0, comm, comm->c_coll->coll_bcast_module);
-			BKPAP_CHK_MPI(ret,bkpap_syncstructure_wireup_err);
+			BKPAP_CHK_MPI(ret, bkpap_syncstructure_wireup_err);
 			status = ucp_ep_rkey_unpack(module->ucp_ep_arr[0], arrival_arr_rkey_buffer, &(remote_ss_tmp->arrival_arr_rkey));
 			BKPAP_CHK_UCP(status, bkpap_syncstructure_wireup_err);
 		}
@@ -538,9 +535,20 @@ int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtyp
 	for (int i = 0; i < num_buffers; i++) {
 		while (BKPAP_DBELL_UNSET == dbells[i]);
 		void* recived_buffer = pbuffs + (i * mca_coll_bkpap_component.postbuff_size);
-		ompi_op_reduce(op, recived_buffer,
-			local_buf, count, dtype);
-		dbells[i] = BKPAP_DBELL_UNSET;
+
+		switch (mca_coll_bkpap_component.cuda) {
+		case 1:
+			BKPAP_OUTPUT("Kernel Reduction");
+			vecAdd(recived_buffer, local_buf, count);
+			break;
+		default:
+			BKPAP_OUTPUT("CPU Reduction");
+			ompi_op_reduce(op, recived_buffer,
+				local_buf, count, dtype);
+			dbells[i] = BKPAP_DBELL_UNSET;
+			break;
+		}
+
 	}
 
 	return ret;
@@ -640,7 +648,7 @@ int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss
 
 	size_t put_buf_size = remote_ss->ss_arrival_arr_len * sizeof(int64_t);
 	int64_t* put_buffer = malloc(put_buf_size);
-	for(int i = 0; i<remote_ss->ss_arrival_arr_len; i++){
+	for (int i = 0; i < remote_ss->ss_arrival_arr_len; i++) {
 		put_buffer[i] = -1;
 	}
 
@@ -657,7 +665,7 @@ int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss
 		ucp_request_free(status_ptr);
 
 	status_ptr = ucp_put_nb(module->ucp_ep_arr[0], put_buffer,
-		(remote_ss->ss_counter_len*sizeof(int64_t)), remote_ss->counter_addr, remote_ss->counter_rkey,
+		(remote_ss->ss_counter_len * sizeof(int64_t)), remote_ss->counter_addr, remote_ss->counter_rkey,
 		_bk_send_cb_noparams);
 	if (UCS_PTR_IS_ERR(status_ptr)) {
 		BKPAP_ERROR("rank %d failed to reset counters returned error %d (%s)",

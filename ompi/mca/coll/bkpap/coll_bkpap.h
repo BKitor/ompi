@@ -20,6 +20,10 @@ BEGIN_C_DECLS
 #define BKPAP_OUTPUT(_str,...) OPAL_OUTPUT_VERBOSE((9, ompi_coll_base_framework.framework_output,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__))
 #define BKPAP_PROFILE(_str,...) OPAL_OUTPUT_VERBOSE((5, ompi_coll_base_framework.framework_output," BKPAP_PROFILE: %.8f rank: %d "_str, MPI_Wtime(), ##__VA_ARGS__))
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
+#define BKPAP_CHK_MALLOC(_buf, _lbl) if(OPAL_UNLIKELY(NULL == _buf)){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto _lbl;}
+#define BKPAP_CHK_UCP(_status, _lbl) if(OPAL_UNLIKELY(UCS_OK != _status)){BKPAP_ERROR("UCP op failed, going to "#_lbl); ret = OMPI_ERROR; goto _lbl;}
+#define BKPAP_CHK_MPI(_ret, _lbl) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR("MPI op failed, going to "#_lbl); goto _lbl;}
+#define BKPAP_CHK_CUDA(_ret, _lbl) if(OPAL_UNLIKELY(cudaSuccess != _ret)){BKPAP_ERROR("CUDA op failed, going to "#_lbl); goto _lbl;}
 #define BKPAP_POSTBUF_SIZE (1<<26)
 #define BKPAP_SEGMENT_SIZE (1<<22)
 #define BKPAP_OUTPUT_VARS(...) // would be cool if I had a function that takes a list of local vars, generates a string, and calls BKPAP_OUPUT
@@ -133,7 +137,7 @@ void mca_coll_bkpap_req_init(void* request);
 
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_postbuffs(int num_bufs, int cuda_device, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots, int num_structures, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 

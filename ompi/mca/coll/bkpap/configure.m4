@@ -19,6 +19,14 @@ AC_DEFUN([MCA_ompi_coll_bkpap_CONFIG], [
           [$1],
           [$2])
 
+    # make sure that CUDA-aware checks have been done
+    AC_REQUIRE([OPAL_CHECK_CUDA])
+
+    # Only build if CUDA support is available
+    AS_IF([test "x$CUDA_SUPPORT" = "x1"],
+          [$1],
+          [$2])
+
     # substitute in the things needed to build ucx
     AC_SUBST([coll_bkpap_CPPFLAGS])
     AC_SUBST([coll_bkpap_LDFLAGS])

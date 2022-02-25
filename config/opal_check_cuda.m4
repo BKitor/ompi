@@ -70,6 +70,7 @@ AS_IF([test "$with_cuda" = "no" || test "x$with_cuda" = "x"],
                                    AC_MSG_RESULT([found ($with_cuda/cuda.h)])])],
                            [opal_check_cuda_happy=yes
                             opal_cuda_incdir="$with_cuda/include"
+                            check_cuda_dir="$with_cuda"
                             AC_MSG_RESULT([found ($opal_cuda_incdir/cuda.h)])])])])])
 
 dnl We cannot have CUDA support without dlopen support.  HOWEVER, at
@@ -112,6 +113,45 @@ AS_IF([test "$opal_check_cuda_happy"="yes"],
     AC_CHECK_DECL([cuPointerGetAttributes], [CUDA_GET_ATTRIBUTES=1], [CUDA_GET_ATTRIBUTES=0],
         [#include <$opal_cuda_incdir/cuda.h>]),
     [])
+
+AS_IF([test "$opal_check_cuda_happy"="yes"],[
+
+    # NVARCH5="-gencode=arch=compute_35,code=sm_35"
+    # NVARCH6="-gencode=arch=compute_50,code=sm_50"
+    # NVARCH5=""
+    # NVARCH6=""
+    NVARCH8="-gencode=arch=compute_60,code=sm_60 \
+    -gencode=arch=compute_61,code=sm_61 \
+    -gencode=arch=compute_61,code=compute_61"
+    NVARCH9="-gencode=arch=compute_70,code=sm_70 \
+    -gencode=arch=compute_70,code=compute_70"
+    NVARCH10="-gencode=arch=compute_75,code=sm_75"
+    NVARCH11="-gencode=arch=compute_80,code=sm_80 \
+    -gencode=arch=compute_80,code=compute_80"
+
+    # Check for NVCC
+    AC_ARG_VAR(NVCC, [NVCC compiler command])
+    AS_IF([test "x$opal_check_cuda_happy" = "xyes"],
+       [AC_PATH_PROG([NVCC], [nvcc], [notfound], [$PATH:$check_cuda_dir/bin])])
+    AS_IF([test "$NVCC" = "notfound"], [opal_check_cuda_happy="no"])
+    AS_IF([test "x$opal_check_cuda_happy" = "xyes"],
+       [CUDA_MAJOR_VERSION=`$NVCC  --version | grep release | sed 's/.*release //' | sed 's/\,.*//' |  cut -d "." -f 1`
+        AS_IF([test $CUDA_MAJOR_VERSION -lt 8],
+              [cuda_happy=no])])
+    AS_IF([test "x$enable_debug" = xyes],
+       [NVCC_CFLAGS="$NVCC_CFLAGS -O0 -g"],
+       [NVCC_CFLAGS="$NVCC_CFLAGS -O3 -g -DNDEBUG"])
+    AS_IF([test "x$opal_check_cuda_happy" = "xyes"],
+       [AS_IF([test $CUDA_MAJOR_VERSION -eq 8],
+              [NVCC_ARCH="${NVARCH5} ${NVARCH6} ${NVARCH8}"])
+        AS_IF([test $CUDA_MAJOR_VERSION -eq 9],
+              [NVCC_ARCH="${NVARCH5} ${NVARCH6} ${NVARCH8} ${NVARCH9}"])
+        AS_IF([test $CUDA_MAJOR_VERSION -eq 10],
+              [NVCC_ARCH="${NVARCH5} ${NVARCH6} ${NVARCH8} ${NVARCH9} ${NVARCH10}"])
+        AS_IF([test $CUDA_MAJOR_VERSION -eq 11],
+              [NVCC_ARCH="${NVARCH6} ${NVARCH8} ${NVARCH9} ${NVARCH10} ${NVARCH11}"])
+        AC_SUBST([NVCC_ARCH], ["$NVCC_ARCH"])])
+],[])
 
 AC_MSG_CHECKING([if have cuda support])
 if test "$opal_check_cuda_happy" = "yes"; then

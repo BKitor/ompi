@@ -1,6 +1,12 @@
 #include "coll_bkpap.h"
+#include "bkpap_kernel.h"
 #include "ompi/mca/coll/base/coll_base_functions.h"
 #include "ompi/op/op.h"
+
+#include "opal/mca/common/cuda/common_cuda.h"
+
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 #define _BK_CHK_RET(_ret, _msg) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR(_msg); return _ret;}
 
@@ -429,6 +435,44 @@ static inline int _bk_multinode_allreduce(const void* sbuf, void* rbuf, int coun
 }
 #undef _BK_CHK_RET
 
+int bk_shitty_test(void);
+int bk_shitty_test(void) {
+    int curet = cudaSuccess;
+    float* vec_a = NULL, * vec_b = NULL;
+    float *tmp = NULL;
+    int shitty_tst_count = (1 << 17);
+    size_t shitty_tst_size = sizeof(float) * shitty_tst_count;
+    
+    tmp = malloc(shitty_tst_size);
+    BKPAP_CHK_MALLOC(tmp, bk_shitty_test_fail);
+    curet = cudaMalloc((void**)&vec_a, shitty_tst_size);
+    BKPAP_CHK_CUDA(curet, bk_shitty_test_fail);
+    curet = cudaMalloc((void**)&vec_b, shitty_tst_size);
+    BKPAP_CHK_CUDA(curet, bk_shitty_test_fail);
+
+    
+    for(int i = 0; i<shitty_tst_count; i++)
+        tmp[i] = 1.0;
+    curet = cudaMemcpy(vec_a, tmp, shitty_tst_size, cudaMemcpyHostToDevice);
+    for(int i = 0; i<shitty_tst_count; i++)
+        tmp[i] = 2.0;
+    curet = cudaMemcpy(vec_b, tmp, shitty_tst_size, cudaMemcpyHostToDevice);
+
+    vecAdd(vec_a, vec_b, shitty_tst_size);
+
+    curet = cudaMemcpy(tmp, vec_a, sizeof(float), cudaMemcpyDeviceToHost);
+    BKPAP_CHK_CUDA(curet, bk_shitty_test_fail);
+    BKPAP_OUTPUT("SHITTY TEST SUCCESS: %f ", *tmp);
+
+    return OMPI_SUCCESS;
+
+bk_shitty_test_fail:
+    cudaFree(vec_a);
+    cudaFree(vec_b);
+    free(tmp);
+    return OMPI_ERROR;
+}
+
 int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype,
     struct ompi_op_t* op,
@@ -495,8 +539,13 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             goto bkpap_ar_fallback;
         }
 
+        int sel_dev = -1;
+        ret = mca_common_cuda_get_device(&sel_dev);
+        BKPAP_CHK_MPI(ret, bkpap_ar_fallback);
+        BKPAP_OUTPUT("rank %d Selected cuda device %d", sel_dev, ompi_comm_rank(ss_comm));
+
         int num_postbufs = (mca_coll_bkpap_component.allreduce_k_value - 1); // should depend on component.alg
-        ret = mca_coll_bkpap_wireup_postbuffs(num_postbufs, -1, bkpap_module, ss_comm);
+        ret = mca_coll_bkpap_wireup_postbuffs(num_postbufs, bkpap_module, ss_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Postbuffer Wireup Failed, fallingback");
             goto bkpap_ar_fallback;
