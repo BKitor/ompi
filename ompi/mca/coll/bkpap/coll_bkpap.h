@@ -102,7 +102,7 @@ typedef struct mca_coll_bkpap_module_t {
 	mca_coll_bkpap_local_postbuf_t local_pbuffs;
 	mca_coll_bkpap_remote_postbuf_t remote_pbuffs;
 
-	int num_syncstructures;
+	int num_syncstructures; // array of ss for pipelining
 	mca_coll_bkpap_local_syncstruct_t* local_syncstructure;
 	mca_coll_bkpap_remote_syncstruct_t* remote_syncstructure;
 

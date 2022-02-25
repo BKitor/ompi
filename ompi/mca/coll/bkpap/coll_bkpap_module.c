@@ -1,6 +1,6 @@
 #include "coll_bkpap.h"
-#include <string.h>
 #include "opal/util/show_help.h"
+#include "opal/mca/common/cuda/common_cuda.h"
 
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 	memset(&(module->endof_super), 0, sizeof(*module) - sizeof(module->super));
@@ -64,6 +64,12 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	}
 	module->local_pbuffs.postbuf_h = NULL;
 	module->local_pbuffs.postbuf_attrs.address = NULL;
+	void* free_local_pbuff = module->local_pbuffs.postbuf_attrs.address;
+	if(mca_coll_bkpap_component.cuda){
+		mca_common_cuda_free(free_local_pbuff);
+	}else{
+		free(free_local_pbuff);
+	}
 	if (NULL != module->local_pbuffs.dbell_h) {
 		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.dbell_h);
 	}

@@ -3,6 +3,8 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/pml/pml.h"
 
+#include "opal/mca/common/cuda/common_cuda.h"
+
 void mca_coll_bkpap_req_init(void* request) {
 	mca_coll_bkpap_req_t* r = request;
 	r->ucs_status = UCS_INPROGRESS;
@@ -191,17 +193,42 @@ int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* modul
 	BKPAP_MSETZ(module->local_pbuffs.postbuf_attrs);
 	module->local_pbuffs.num_buffs = num_bufs;
 
+	void* mapped_postbuf = NULL;
+	size_t mapped_postbuf_size = mca_coll_bkpap_component.postbuff_size * (num_bufs);
+	uint64_t mapped_postbuf_mem_type = 0;
+	if (mca_coll_bkpap_component.cuda) { // allocate cuda buffer
+		mapped_postbuf_mem_type = UCS_MEMORY_TYPE_CUDA;
+		// int curet = cudaMalloc(&mapped_postbuf, mapped_postbuf_size);
+		// BKPAP_CHK_CUDA(curet, bkpap_remotepostbuf_wireup_err);
+		ret = mca_common_cuda_malloc(&mapped_postbuf, mapped_postbuf_size);
+		BKPAP_CHK_MPI(ret, bkpap_remotepostbuf_wireup_err);
+
+	}
+	else { // allocate host buffer
+		mapped_postbuf_mem_type = UCS_MEMORY_TYPE_HOST;
+		ret = posix_memalign(&mapped_postbuf, sizeof(int64_t), mapped_postbuf_size);
+		if (0 != ret || NULL == mapped_postbuf) {
+			BKPAP_ERROR("posiz_memalign failed, exiting");
+			goto bkpap_remotepostbuf_wireup_err;
+		}
+		ret = OMPI_SUCCESS;
+	}
+
 	mem_map_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
 		UCP_MEM_MAP_PARAM_FIELD_LENGTH |
-		UCP_MEM_MAP_PARAM_FIELD_FLAGS;
-	mem_map_params.address = NULL;
-	mem_map_params.length = mca_coll_bkpap_component.postbuff_size * (num_bufs);
-	mem_map_params.flags = UCP_MEM_MAP_ALLOCATE | UCP_MEM_MAP_NONBLOCK;
+		UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE;
+	mem_map_params.address = mapped_postbuf;
+	mem_map_params.length = mapped_postbuf_size;
+	mem_map_params.memory_type = mapped_postbuf_mem_type;
 
 	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_pbuffs.postbuf_h);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
+	mem_map_params.field_mask |= UCP_MEM_MAP_PARAM_FIELD_FLAGS;
+	mem_map_params.address = NULL;
 	mem_map_params.length = sizeof(int64_t) * (num_bufs);
+	mem_map_params.flags = UCP_MEM_MAP_ALLOCATE;
+	mem_map_params.memory_type = UCS_MEMORY_TYPE_HOST;
 	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_pbuffs.dbell_h);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
@@ -311,12 +338,6 @@ int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* modul
 	}
 
 	ucp_rkey_buffer_release(postbuf_rkey_buffer);
-	// BKPAP_OUTPUT("rank %d, rkeys [%lx %lx %lx %lx]", mpi_rank, 
-	// 	module->remote_pbuffs.buffer_rkey_arr[0],
-	// 	module->remote_pbuffs.buffer_rkey_arr[1],
-	// 	module->remote_pbuffs.buffer_rkey_arr[2],
-	// 	module->remote_pbuffs.buffer_rkey_arr[3]
-	// );
 	BKPAP_OUTPUT("ucp postbuf wireup SUCCESS");
 bkpap_remotepostbuf_wireup_err:
 
@@ -526,11 +547,6 @@ int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtyp
 	uint8_t* pbuffs = module->local_pbuffs.postbuf_attrs.address;
 	size_t dtype_size;
 	ompi_datatype_type_size(dtype, &dtype_size);
-
-	// BKPAP_OUTPUT("rank %d reducing %d slots, dbells [ %ld %ld %ld ]", ompi_comm_rank(module->intra_comm), num_buffers,
-	// 	dbells[0],
-	// 	dbells[1],
-	// 	dbells[2]);
 
 	for (int i = 0; i < num_buffers; i++) {
 		while (BKPAP_DBELL_UNSET == dbells[i]);
