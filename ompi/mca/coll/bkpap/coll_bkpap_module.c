@@ -1,6 +1,8 @@
 #include "coll_bkpap.h"
 #include "opal/util/show_help.h"
-#include "opal/mca/common/cuda/common_cuda.h"
+
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 	memset(&(module->endof_super), 0, sizeof(*module) - sizeof(module->super));
@@ -12,7 +14,7 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 
 	if (NULL != module->remote_syncstructure) {
 		for (int i = 0; i < module->num_syncstructures; i++) {
-			mca_coll_bkpap_remote_syncstruct_t *remote_ss_tmp = &(module->remote_syncstructure[i]);
+			mca_coll_bkpap_remote_syncstruct_t* remote_ss_tmp = &(module->remote_syncstructure[i]);
 			free(remote_ss_tmp->ss_arrival_arr_offsets);
 			remote_ss_tmp->ss_arrival_arr_offsets = NULL;
 			if (NULL != remote_ss_tmp->arrival_arr_rkey)
@@ -30,7 +32,7 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 
 	if (module->rank == 0) {
 		for (int i = 0; i < module->num_syncstructures; i++) {
-			mca_coll_bkpap_local_syncstruct_t *local_ss_tmp = &(module->local_syncstructure[i]);
+			mca_coll_bkpap_local_syncstruct_t* local_ss_tmp = &(module->local_syncstructure[i]);
 			if (NULL != local_ss_tmp->counter_mem_h)
 				ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, local_ss_tmp->counter_mem_h);
 			if (NULL != local_ss_tmp->arrival_arr_mem_h)
@@ -65,9 +67,12 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	module->local_pbuffs.postbuf_h = NULL;
 	module->local_pbuffs.postbuf_attrs.address = NULL;
 	void* free_local_pbuff = module->local_pbuffs.postbuf_attrs.address;
-	if(mca_coll_bkpap_component.cuda){
-		mca_common_cuda_free(free_local_pbuff);
-	}else{
+	if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
+		|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type
+		) {
+		cudaFree(free_local_pbuff);
+	}
+	else {
 		free(free_local_pbuff);
 	}
 	if (NULL != module->local_pbuffs.dbell_h) {

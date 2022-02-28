@@ -33,6 +33,20 @@ enum mca_coll_bkpap_dbell_state {
 	BKPAP_DBELL_SET = 1,
 };
 
+typedef enum mca_coll_bkpap_allreduce_algs {
+	BKPAP_ALLREDUCE_ALG_KTREE = 0,
+	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
+	BKPAP_ALLREDUCE_ALG_RSA = 2,
+	BKPAP_ALLREDUCE_ALG_COUNT
+} mca_coll_bkpap_allreduce_algs_t;
+
+typedef enum mca_coll_bkpap_postbuf_memory_type {
+	BKPAP_POSTBUF_MEMORY_TYPE_HOST = 0,
+	BKPAP_POSTBUF_MEMORY_TYPE_CUDA = 1,
+	BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED = 2,
+	BKPAP_POSTBUF_MEMORY_TYPE_COUNT
+} mca_coll_bkpap_postbuf_memory_type_t;
+
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
 	bool enable_mpi_threads);
 
@@ -123,7 +137,8 @@ typedef struct mca_coll_bkpap_component_t {
 	int allreduce_k_value;
 	int allreduce_alg;
 	int priority;
-	int cuda;
+	mca_coll_bkpap_postbuf_memory_type_t bk_postbuf_memory_type;
+	ucs_memory_type_t ucs_postbuf_memory_type;
 } mca_coll_bkpap_component_t;
 
 OMPI_MODULE_DECLSPEC extern mca_coll_bkpap_component_t mca_coll_bkpap_component;
@@ -143,17 +158,10 @@ int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct omp
 
 int mca_coll_bkpap_arrive_ss(int64_t ss_rank, int counter_offset, int arrival_arr_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int64_t* ret_pos);
 int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_get_rank_of_arrival(int arrival, int arival_round_offset,mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, int* rank);
+int mca_coll_bkpap_get_rank_of_arrival(int arrival, int arival_round_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_put_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int send_rank, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
-enum mca_coll_bkpap_allreduce_algs {
-	BKPAP_ALLREDUCE_ALG_KTREE = 0,
-	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
-	BKPAP_ALLREDUCE_ALG_RSA = 2,
-	BKPAP_ALLREDUCE_ALG_COUNT
-};
 
 END_C_DECLS
 #endif

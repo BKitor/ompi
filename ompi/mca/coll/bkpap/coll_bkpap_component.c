@@ -30,7 +30,8 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
     .priority = 35,
-    .cuda = 0,
+    .bk_postbuf_memory_type = BKPAP_POSTBUF_MEMORY_TYPE_HOST,
+    .ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST
 };
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_threads) {
@@ -43,6 +44,22 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
         return OMPI_ERR_NOT_SUPPORTED;
     }
 
+    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
+    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+        mca_coll_bkpap_component.ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST;
+        break;
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+        mca_coll_bkpap_component.ucs_postbuf_memory_type = UCS_MEMORY_TYPE_CUDA;
+        break;
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+        mca_coll_bkpap_component.ucs_postbuf_memory_type = UCS_MEMORY_TYPE_CUDA_MANAGED;
+        break;
+    default:
+        BKPAP_ERROR("Unsuported memory type, options are [Host:0, Cuda:1, Managed:2]");
+        return OMPI_ERR_NOT_SUPPORTED;
+        break;
+    }
+
     return OMPI_SUCCESS;
 }
 
@@ -52,7 +69,7 @@ static int bkpap_register(void) {
         "postbuff_size", "Size of preposted buffer, default 64MB",
         MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.postbuff_size);
-    
+
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "pipeline_segment_size", "Segment size for pipeline",
         MCA_BASE_VAR_TYPE_UINT64_T, NULL, 0, 0, OPAL_INFO_LVL_6,
@@ -74,9 +91,9 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.priority);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "cuda", "run collective on cuda device",
+        "postbuf_mem_type", "postbuf memory types, {0:Host, 1:CUDA, 2:CUDA Managed}",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.cuda);
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.bk_postbuf_memory_type);
 
     return OMPI_SUCCESS;
 }
