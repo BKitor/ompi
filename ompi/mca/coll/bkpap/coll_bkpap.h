@@ -17,7 +17,7 @@
 BEGIN_C_DECLS
 
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
-#define BKPAP_OUTPUT(_str,...) OPAL_OUTPUT_VERBOSE((9, ompi_coll_base_framework.framework_output,"%s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__))
+#define BKPAP_OUTPUT(_str,...) OPAL_OUTPUT_VERBOSE((9, ompi_coll_base_framework.framework_output,"BKOUT %s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__))
 #define BKPAP_PROFILE(_str,...) OPAL_OUTPUT_VERBOSE((5, ompi_coll_base_framework.framework_output," BKPAP_PROFILE: %.8f rank: %d "_str, MPI_Wtime(), ##__VA_ARGS__))
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
 #define BKPAP_CHK_MALLOC(_buf, _lbl) if(OPAL_UNLIKELY(NULL == _buf)){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto _lbl;}

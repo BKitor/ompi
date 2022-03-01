@@ -35,11 +35,13 @@ int main(int argc, char* argv[]) {
 
         for (int j = 0; j < count; j++) {
             if (snd_bff[j] != g_sum * i)
-                err += 1;
+                err = j;
+            if (err)
+                break;
         }
 
         if (err) {
-            printf("ERROR: rank:%d snd_buff %.2f not equal round %d, shoudl be %.2f\n", rank, snd_bff[0], i, g_sum * i);
+            printf("ERROR: rank:%d snd_buff %.2f not equal round %d, err_pos %d, should be %.2f\n", rank, snd_bff[err], i, err, g_sum * i);
             g_err = 69;
         }
         else {

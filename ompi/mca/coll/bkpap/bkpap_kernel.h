@@ -23,7 +23,7 @@
 extern "C"
 {
 #endif
-  void vecAdd(float *a, float *b, int n);
+  void vec_add_float(float *in, float *in_out, int count);
 #ifdef __cplusplus
 }
 #endif
@@ -36,7 +36,7 @@ extern "C"
  * is only an example.
  * ----------------------------------------------------------*/
 
-__global__ void vecAddImpl(float *a, float *b, int n);
+__global__ void vec_add_float_impl(float *in, float *in_out, int count);
 
 #endif
 

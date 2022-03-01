@@ -256,6 +256,12 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     int mpi_rank = ompi_comm_rank(comm), mpi_size = ompi_comm_size(comm);
     int k = mca_coll_bkpap_component.allreduce_k_value;
     int64_t arrival_pos = -1;
+    
+	// struct cudaPointerAttributes cu_attrs;
+	// cudaPointerGetAttributes(&cu_attrs, rbuf);
+    // int rbuf_is_cuda = (cudaMemoryTypeDevice  == cu_attrs.type || cudaMemoryTypeManaged == cu_attrs.type);
+    int rbuf_is_cuda = opal_cuda_check_one_buf(rbuf, NULL);
+    int pbuf_is_cuda = opal_cuda_check_one_buf(bkpap_module->local_pbuffs.postbuf_attrs.address, NULL);
 
     BKPAP_PROFILE("arrive_at_ktree", mpi_rank);
 
@@ -263,7 +269,7 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     char offsets_str[64] = { '\0' };
     _bk_fill_array_str_ld(
         bkpap_module->remote_syncstructure->ss_counter_len, bkpap_module->remote_syncstructure->ss_arrival_arr_offsets, 64, offsets_str);
-    BKPAP_OUTPUT("rank: %d, offsets %s", mpi_rank, offsets_str);
+    BKPAP_OUTPUT("rank: %d, offsets %s, rbuf_is_cuda: %d, pbuf_is_cuda: %d", mpi_rank, offsets_str, rbuf_is_cuda, pbuf_is_cuda);
 #endif
 
     for (int sync_round = 0; sync_round < bkpap_module->remote_syncstructure->ss_counter_len; sync_round++) {
@@ -325,7 +331,6 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
 
     BKPAP_PROFILE("finish_inter_bcast", mpi_rank);
 
-    // sm bcast is non-blocking, need to block before leaving coll
     // TODO: desing reset-system that doesn't block 
         // hard-reset by rank 0 or last rank, and  check in arrival that arrival_pos < world_size
     comm->c_coll->coll_barrier(comm, comm->c_coll->coll_barrier_module);
@@ -589,7 +594,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     }
 
 
-    BKPAP_OUTPUT("rank: %d returning first val %d BKPAP ALLREDUCE SUCCESSFULL", global_rank, ((int*)rbuf)[0]);
+    BKPAP_OUTPUT("rank: %d returning BKPAP ALLREDUCE SUCCESSFULL", global_rank);
     return OMPI_SUCCESS;
 
 bkpap_ar_fallback:

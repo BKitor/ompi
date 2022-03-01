@@ -29,8 +29,7 @@ component_noinst = libmca_coll_bkpap.la
 component_install =
 endif
 
-# coll_bkpap_LDFLAGS += -lbkpapkernel -L$(top_builddir)/ompi/mca/coll/bkpap/kernel
-# coll_bkpap_LIBS += kernel/mca_coll_bkpap_kernel.la
+coll_bkpap_LDFLAGS += -lcudart
 
 mcacomponentdir = $(ompilibdir)
 mcacomponent_LTLIBRARIES = $(component_install)

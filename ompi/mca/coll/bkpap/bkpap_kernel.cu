@@ -21,28 +21,26 @@ static inline cudaStream_t get_stream() {
 }
 
 // Calculated A = A + B
-__global__ void vecAddImpl(float *a, float *b, int n)
+__global__ void vec_add_float_impl(float *in, float *in_out, int count)
 {
   // Get our global thread ID
   int id = blockIdx.x*blockDim.x+threadIdx.x;
 
   // Make sure we do not go out of bounds
-  if (id < n) {
-    float tmp_buf = a[id] + b[id];
-    a[id] = tmp_buf;
-    b[id] = tmp_buf;
+  if (id < count) {
+    in_out[id] = in[id] + in_out[id];
   }
 }
 
-extern "C" void vecAdd(float *a, float *b, int n) {
-  int Db = n < 1024 ? n : 1024;
-  int Dg = ceil((float) n / (float) Db);
+extern "C" void vec_add_float(float *in, float *in_out, int count) {
+  int Db = count < 1024 ? count : 1024;
+  int Dg = ceil((float) count / (float) Db);
 
-  int Ns = n * sizeof(float) < 48 * 1024
-         ? n * sizeof(float)
+  int Ns = count * sizeof(float) < 48 * 1024
+         ? count * sizeof(float)
          : 48 * 1024;
 
   cudaStream_t stream = get_stream();
-  vecAddImpl<<<Dg, Db, Ns, stream>>>(a, b, n);
+  vec_add_float_impl<<<Dg, Db, Ns, stream>>>(in, in_out, count);
   cudaStreamSynchronize(stream);
 }
