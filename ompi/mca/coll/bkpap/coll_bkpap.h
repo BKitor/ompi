@@ -12,6 +12,9 @@
 #include "ompi/mca/coll/base/base.h"
 #include "ompi/op/op.h"
 
+#include "ompi/mca/coll/base/coll_base_topo.h"
+#include "ompi/mca/coll/base/coll_base_functions.h"
+
 #include <ucp/api/ucp.h>
 
 BEGIN_C_DECLS
@@ -163,5 +166,7 @@ int mca_coll_bkpap_put_postbuf(const void* buf, struct ompi_datatype_t* dtype, i
 int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
+int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, uint32_t segsize, int max_outstanding_reqs);
+int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
 END_C_DECLS
 #endif

@@ -1,6 +1,9 @@
 #ifndef BKPAP_KERNEL_H
 #define BKPAP_KERNEL_H
 
+#include "ompi/communicator/communicator.h"
+#include "ompi/op/op.h"
+
 /* Function: vecAdd
  * ------------------------------------------------------------
  * A blocking host function that will calculate a vector
@@ -23,7 +26,18 @@
 extern "C"
 {
 #endif
-  void vec_add_float(float *in, float *in_out, int count);
+  void vec_add_float(float* in, float* in_out, int count);
+
+  static inline void bk_gpu_op_reduce(ompi_op_t* op, void* source,void* target, size_t full_count, ompi_datatype_t* dtype){
+    if(OPAL_LIKELY( MPI_FLOAT == dtype && MPI_SUM == op )){ // is sum float
+      vec_add_float(source, target, full_count);
+    } else {
+      BKPAP_ERROR("Falling back to ompi impl");
+      // FULL SEND TO A SEGV !!!
+      ompi_op_reduce(op, source, target, full_count, dtype);
+    }
+  }
+
 #ifdef __cplusplus
 }
 #endif
@@ -36,7 +50,7 @@ extern "C"
  * is only an example.
  * ----------------------------------------------------------*/
 
-__global__ void vec_add_float_impl(float *in, float *in_out, int count);
+__global__ void vec_add_float_impl(float* in, float* in_out, int count);
 
 #endif
 

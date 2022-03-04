@@ -570,7 +570,7 @@ int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtyp
 		case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
 		case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
 			BKPAP_OUTPUT("Kernel local_reduce slot: %d", i);
-			vec_add_float(recived_buffer, local_buf, count);
+			bk_gpu_op_reduce(op, recived_buffer, local_buf, count, dtype);
 			break;
 		case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
 			BKPAP_OUTPUT("CPU local_reduce slot: %d", i);
