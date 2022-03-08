@@ -66,7 +66,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
     mca_coll_bkpap_module_t* bkpap_module) {
     int ret = OMPI_SUCCESS;
     int inter_rank = ompi_comm_rank(inter_comm), inter_size = ompi_comm_size(inter_comm);
-    int intra_rank = ompi_comm_rank(intra_comm);
+    int intra_rank = ompi_comm_rank(intra_comm), intra_size = ompi_comm_size(intra_comm);
     int k = mca_coll_bkpap_component.allreduce_k_value;
     int is_inter = (0 == intra_rank);
 
@@ -79,19 +79,32 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
     int num_segments = (count + seg_count - 1) / seg_count;
     size_t real_seg_size = (ptrdiff_t)seg_count * type_extent;
 
-    if (is_inter)BKPAP_PROFILE("ktree_pipeline_arrive", inter_rank);
+    if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("ktree_pipeline_arrive", inter_rank);
 
-    ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, intra_comm->c_coll->coll_reduce_module, 0, 0);
-    // ret = intra_comm->c_coll->coll_reduce(
-    //     reduce_sbuf, reduce_rbuf, count, dtype, op, 0,
-    //     bkpap_module->intra_comm,
-    //     bkpap_module->intra_comm->c_coll->coll_reduce_module);
+    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
+    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+        ret = intra_comm->c_coll->coll_reduce(
+            sbuf, rbuf, count, dtype, op, 0,
+            intra_comm,
+            intra_comm->c_coll->coll_reduce_module);
+        break;
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, intra_comm->c_coll->coll_reduce_module, 0, 0);
+        break;
+    default:
+        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
+        return OMPI_ERROR;
+        break;
+    }
+    _BK_CHK_RET(ret, "intra-node reduce failed");
 
-    if (is_inter)BKPAP_PROFILE("finish_intra_reduce", inter_rank);
 
-    if (is_inter) {
-        BKPAP_OUTPUT("KTREE_PIPELINE_ARRIVE, rank: %d, count: %d, seg_size: %ld, dtype_size: %ld, num_segments:%d",
-            inter_rank, count, seg_size, type_size, num_segments);
+    if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("finish_intra_reduce", inter_rank);
+
+    if (OPAL_LIKELY(is_inter)) {
+        BKPAP_OUTPUT("KTREE_PIPELINE_ARRIVE, rank: %d, count: %d, seg_size: %ld, dtype_size: %ld, num_segments:%d, inter_size: %d, intra_size: %d",
+            inter_rank, count, seg_size, type_size, num_segments, inter_size, intra_size);
         ompi_request_t* inter_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* intra_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* tmp_bcast_wait_arr[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
@@ -119,7 +132,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
             BKPAP_OUTPUT("LEAVE_WAIT_ALL: seg_index: %d, rank: %d, phase_selector: %d", seg_index, inter_rank, phase_selector);
 
-            if (seg_index > 1) { // Launch Intra-bcast
+            if (seg_index > 1 && OPAL_LIKELY(inter_size != intra_size)) { // Launch Intra-bcast
                 BKPAP_OUTPUT("STARTING_INTRA_IBCAST: seg_index:%d, rank: %d", seg_index, inter_rank);
                 uint8_t* intra_buf = rbuf;
                 intra_buf += (seg_index - 2) * real_seg_size;
@@ -253,7 +266,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
     }
 
 
-    if (is_inter)BKPAP_PROFILE("ktree_pipeline_leave", inter_rank);
+    if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("ktree_pipeline_leave", inter_rank);
 
     return ret;
 }
@@ -271,12 +284,23 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
 
     if (is_inter)BKPAP_PROFILE("arrive_at_ktree", inter_rank);
 
-    ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, intra_comm->c_coll->coll_reduce_module, 0, 0);
-
-    // ret = intra_comm->c_coll->coll_reduce(
-    //     rbuf, sbuf, count, dtype, op, 0,
-    //     intra_comm,
-    //     intra_comm->c_coll->coll_reduce_module);
+    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
+    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+        ret = intra_comm->c_coll->coll_reduce(
+            sbuf, rbuf, count, dtype, op, 0,
+            intra_comm,
+            intra_comm->c_coll->coll_reduce_module);
+        break;
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, intra_comm->c_coll->coll_reduce_module, 0, 0);
+        break;
+    default:
+        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
+        return OMPI_ERROR;
+        break;
+    }
+    _BK_CHK_RET(ret, "intra-node reduce failed");
 
     BKPAP_PROFILE("finish_intra_reduce", inter_rank);
 
@@ -518,7 +542,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             _bk_fill_array_str_ld(bkpap_module->remote_syncstructure->ss_arrival_arr_len, arrival_arr_tmp, 128, arrival_str);
             char count_str[128] = { '\0' };
             _bk_fill_array_str_ld(bkpap_module->remote_syncstructure->ss_counter_len, count_arr_tmp, 128, count_str);
-            BKPAP_OUTPUT("SS initalized at rank 0, arirval_arr: %s, count_arr: %s", arrival_str, count_str);
+            BKPAP_OUTPUT("SS initalized at intra %d inter %d global %d, arirval_arr: %s, count_arr: %s", ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), ompi_comm_rank(comm), arrival_str, count_str);
         }
 #endif
 

@@ -344,7 +344,7 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf,
 	ompi_datatype_type_size(datatype, &typelng);
 	COLL_BASE_COMPUTED_SEGCOUNT(segsize, typelng, segcount);
 
-	return ompi_coll_base_reduce_generic(MPI_IN_PLACE, buf, count, datatype,
+	return mca_coll_bkpap_reduce_generic(MPI_IN_PLACE, buf, count, datatype,
 		op, root, comm, module,
 		data->cached_in_order_bmtree,
 		segcount, max_outstanding_reqs);

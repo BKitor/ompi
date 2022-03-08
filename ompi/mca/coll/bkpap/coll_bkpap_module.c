@@ -163,7 +163,6 @@ int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct omp
 	comm->c_coll->coll_allreduce = module->fallback_allreduce;
 	comm->c_coll->coll_allreduce_module = module->fallback_allreduce_module;
 
-	// ret = opal_info_set(&comm_info, "ompi_comm_coll_preference", "sm,^bkpap");
 	ret = opal_info_set(&comm_info, "ompi_comm_coll_preference", "tuned,^bkpap");
 	_BKPAP_CHK_MPI(ret);
 	ret = ompi_comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0,

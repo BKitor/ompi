@@ -13,6 +13,7 @@ NVCCFLAGS = ${NVCC_CFLAGS} ${AM_CPPFLAGS} ${coll_bkpap_CPPFLAGS} --compiler-opti
 sources = coll_bkpap_module.c coll_bkpap_allreduce.c \
 		  coll_bkpap_component.c coll_bkpap_ucp.c \
 		  bkpap_kernel.h bkpap_kernel.cu \
+		  coll_bkpap_reduce.c \
 		  coll_bkpap.h
 
 # Make the output library in this directory, and name it either
