@@ -20,6 +20,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
         .collm_comm_query = mca_coll_bkpap_comm_query,
     },
 
+    .enable_threads = MPI_THREAD_SINGLE,
     .ucp_context = NULL,
     .ucp_worker = NULL,
     .ucp_worker_addr = NULL,
@@ -39,10 +40,11 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
 
     // TODO: this isn't the place to do this, it's bad form to do allocations in init_query
     // a proper solution would involve ref-counters and construction/destruction with modules
-    ret = mca_coll_bkpap_init_ucx(enable_mpi_threads);
-    if (OMPI_SUCCESS != ret) {
-        return OMPI_ERR_NOT_SUPPORTED;
-    }
+    // ret = mca_coll_bkpap_init_ucx(enable_mpi_threads);
+    // if (OMPI_SUCCESS != ret) {
+    //     return OMPI_ERR_NOT_SUPPORTED;
+    // }
+    mca_coll_bkpap_component.enable_threads = enable_mpi_threads;
 
     switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
     case BKPAP_POSTBUF_MEMORY_TYPE_HOST:

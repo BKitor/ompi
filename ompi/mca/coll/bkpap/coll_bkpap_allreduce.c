@@ -469,6 +469,16 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     BKPAP_OUTPUT("comm rank: %d, intra rank: %d, inter rank: %d, alg %d", ompi_comm_rank(comm),
         ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), alg);
 
+    
+    if(OPAL_UNLIKELY(NULL == mca_coll_bkpap_component.ucp_context)){
+        ret = mca_coll_bkpap_init_ucx(mca_coll_bkpap_component.enable_threads);
+        if (OMPI_SUCCESS != ret) {
+            BKPAP_ERROR("UCX Initialization Failed");
+            goto bkpap_ar_fallback;
+        }
+        BKPAP_OUTPUT("UCX Initialization SUCCESS");
+    }
+    
 
     if (OPAL_UNLIKELY((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
         || (!is_multinode && !bkpap_module->ucp_is_initialized))) {

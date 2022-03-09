@@ -4,6 +4,8 @@
 #include "ompi_config.h"
 #include "mpi.h"
 
+#include "bkpap_kernel.h"
+
 #include "opal/class/opal_object.h"
 
 #include "ompi/communicator/communicator.h"
@@ -130,6 +132,7 @@ OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);
 typedef struct mca_coll_bkpap_component_t {
 	mca_coll_base_component_t super;
 
+	int enable_threads;
 	ucp_context_h ucp_context;
 	ucp_worker_h ucp_worker;
 	ucp_address_t* ucp_worker_addr;
@@ -168,5 +171,18 @@ int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss
 
 int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, uint32_t segsize, int max_outstanding_reqs);
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
+
+
+static inline void bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, size_t full_count, ompi_datatype_t* dtype) {
+	if (OPAL_LIKELY(MPI_FLOAT == dtype && MPI_SUM == op)) { // is sum float
+		vec_add_float(source, target, full_count);
+	}
+	else {
+		BKPAP_ERROR("Falling back to ompi impl");
+		// FULL SEND TO A SEGV !!!
+		ompi_op_reduce(op, source, target, full_count, dtype);
+	}
+}
+
 END_C_DECLS
 #endif
