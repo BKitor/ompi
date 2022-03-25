@@ -60,6 +60,15 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     return OPAL_ERR_NOT_IMPLEMENTED;
 }
 
+static inline int bk_request_wait_all(ompi_request_t** request_arr, int req_arr_len) {
+    int tmp_is_completed;
+    ompi_request_test_all(req_arr_len, request_arr, &tmp_is_completed, MPI_STATUSES_IGNORE);
+    while (!tmp_is_completed) {
+        ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+        ompi_request_test_all(req_arr_len, request_arr, &tmp_is_completed, MPI_STATUSES_IGNORE);
+    }
+}
+
 static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size,
     struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm,
@@ -81,10 +90,13 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
     if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("ktree_pipeline_arrive", inter_rank);
 
+    void* intra_reduce_sbuf = (0 == intra_rank) ? MPI_IN_PLACE : rbuf;
+    void* intra_reduce_rbuf = (0 == intra_rank) ? rbuf : NULL;
+
     switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
     case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
         ret = intra_comm->c_coll->coll_reduce(
-            sbuf, rbuf, count, dtype, op, 0,
+            intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0,
             intra_comm,
             intra_comm->c_coll->coll_reduce_module);
         break;
@@ -127,13 +139,14 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             // Wait Inter and Intra ibcasts
             tmp_bcast_wait_arr[0] = (intra_bcast_reqs[phase_selector]);
             tmp_bcast_wait_arr[1] = (inter_bcast_reqs[phase_selector]);
-            ompi_request_wait_all(2, tmp_bcast_wait_arr, MPI_STATUSES_IGNORE);
+            bk_request_wait_all(tmp_bcast_wait_arr, 2);
+
             BKPAP_PROFILE("leave_new_seg_wait", inter_rank);
 
             BKPAP_OUTPUT("LEAVE_WAIT_ALL: seg_index: %d, rank: %d, phase_selector: %d", seg_index, inter_rank, phase_selector);
 
             if (seg_index > 1 && OPAL_LIKELY(inter_size != intra_size)) { // Launch Intra-bcast
-                BKPAP_OUTPUT("STARTING_INTRA_IBCAST: seg_index:%d, rank: %d", seg_index, inter_rank);
+                BKPAP_OUTPUT("STARTING_INTRA_IBCAST: seg_index: %d, rank: %d", seg_index, inter_rank);
                 uint8_t* intra_buf = rbuf;
                 intra_buf += (seg_index - 2) * real_seg_size;
                 intra_comm->c_coll->coll_ibcast(
@@ -167,29 +180,31 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
                 if (0 == arrival_pos % sync_mask) { // if-parent reduce
                     // TODO: this num_reduction logic only works for (k == 4) and (wsize is a power of 2),
                     // TODO: might want to fix at some point
-                    int num_reductions = (sync_mask * k <= inter_size) ? k - 1 : 1;
-                    BKPAP_OUTPUT("START_REDUCE: seg_index: %d, rank: %d, reducing: %d, count: %d", seg_index, inter_rank, num_reductions, bcast_count);
+                    int num_reductions = (sync_mask > inter_size) ? 1 : k - 1;
+                    BKPAP_OUTPUT("DBG sync_mask: %d, k: %d, inter_size: %d, num_reductions: %d", sync_mask, k, inter_size, num_reductions);
+                    BKPAP_OUTPUT("START_PBUF_REDUCE: seg_index: %d, rank: %d, num_reductions: %d, count: %d", seg_index, inter_rank, num_reductions, bcast_count);
                     BKPAP_PROFILE("start_postbuf_reduce", inter_rank);
-                    ret = mca_coll_bkpap_reduce_postbufs(seg_buf, dtype, bcast_count, op, num_reductions, bkpap_module);
+                    ret = mca_coll_bkpap_reduce_postbufs(seg_buf, dtype, bcast_count, op, num_reductions, inter_comm, bkpap_module);
                     BKPAP_PROFILE("leave_postbuf_reduce", inter_rank);
                     _BK_CHK_RET(ret, "reduce postbuf failed");
-                    BKPAP_OUTPUT("LEAVE_REDUCE: seg_index: %d, rank: %d, sync_round: %d", seg_index, inter_rank, sync_round);
+                    BKPAP_OUTPUT("LEAVE_PBUF_REDUCE: seg_index: %d, rank: %d, sync_round: %d", seg_index, inter_rank, sync_round);
                 } // if-parent reduce
                 else { // else-child send parent
                     // sending
                     int send_rank = -1;
                     int send_arrival_pos = arrival_pos - (arrival_pos % sync_mask);
                     int arrival_round_offset = 0;
-                    BKPAP_OUTPUT("GET_PARENT: seg_index: %d, rank: %d, arrival: %ld, getting arrival: %d", seg_index, inter_rank, arrival_pos, send_arrival_pos);
+                    BKPAP_OUTPUT("GET_PARENT: seg_index: %d, rank: %d, arrival: %ld, parent_arrival: %d, sync_mask: %d", seg_index, inter_rank, arrival_pos, send_arrival_pos, sync_mask);
                     while (send_rank == -1) {
                         ret = mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, arrival_round_offset, remote_ss_tmp, bkpap_module, &send_rank);
                         _BK_CHK_RET(ret, "get rank of arrival faild");
                     }
-                    BKPAP_OUTPUT("SEND_PARENT: seg_index: %d, rank: %d, arrival: %ld, send_rank: %d", seg_index, inter_rank, arrival_pos, send_rank);
                     BKPAP_PROFILE("got_parent_rank", inter_rank);
 
                     int slot = ((arrival_pos / (sync_mask / k)) % k) - 1;
 
+                    BKPAP_OUTPUT("SEND_PARENT: seg_index: %d, rank: %d, arrival: %ld, send_rank: %d, send_arrival: %d, slot: %d, sync_mask: %d",
+                        seg_index, inter_rank, arrival_pos, send_rank, send_arrival_pos, slot, sync_mask);
                     ret = mca_coll_bkpap_put_postbuf(seg_buf, dtype, bcast_count, send_rank, slot, inter_comm, bkpap_module);
                     _BK_CHK_RET(ret, "write parrent postuf failed");
                     BKPAP_PROFILE("sent_parent_rank", inter_rank);
@@ -198,13 +213,13 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             } // pap-aware loop
 
             if (inter_rank == inter_bcast_root) {
-                BKPAP_OUTPUT("RESET_SS: seg_index:%d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
+                BKPAP_OUTPUT("RESET_SS: seg_index: %d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
                 ret = mca_coll_bkpap_reset_remote_ss(remote_ss_tmp, inter_comm, bkpap_module);
                 _BK_CHK_RET(ret, "reset_remote_ss failed");
                 BKPAP_PROFILE("reset_remote_ss", inter_rank);
             }
 
-            BKPAP_OUTPUT("STARTING_INTER_IBCAST: seg_index:%d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
+            BKPAP_OUTPUT("STARTING_INTER_IBCAST: seg_index: %d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
             inter_comm->c_coll->coll_ibcast(
                 seg_buf, bcast_count, dtype, inter_bcast_root, inter_comm,
                 &(inter_bcast_reqs[seg_index % 2]), inter_comm->c_coll->coll_ibcast_module);
@@ -227,7 +242,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
             tmp_bcast_wait_arr[0] = inter_bcast_reqs[phase_selector];
             tmp_bcast_wait_arr[1] = intra_bcast_reqs[phase_selector];
-            ompi_request_wait_all(2, tmp_bcast_wait_arr, MPI_STATUSES_IGNORE);
+            bk_request_wait_all(tmp_bcast_wait_arr, 2);
             BKPAP_PROFILE("leave_cleanup_wait", inter_rank);
             BKPAP_OUTPUT("FINISHED_CLEANUP_WAIT: rank: %d, cleanup_idx: %d", inter_rank, cleanup_index);
 
@@ -243,7 +258,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             seg_buf += real_seg_size;
         }
 
-        ompi_request_wait_all(2, intra_bcast_reqs, MPI_STATUSES_IGNORE);
+        bk_request_wait_all(intra_bcast_reqs, 2);
         BKPAP_PROFILE("final_cleanup_wait", inter_rank);
         BKPAP_OUTPUT("CLEANUP_DONE: rank: %d", inter_rank);
     }
@@ -282,12 +297,16 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     int k = mca_coll_bkpap_component.allreduce_k_value;
     int64_t arrival_pos = -1;
 
+    BKPAP_OUTPUT("rank (%d, %d) Arrive at ktree, comm: '%s', sbuf: %p rbuf: %p", inter_rank, intra_rank, intra_comm->c_name, sbuf, rbuf);
     if (is_inter)BKPAP_PROFILE("arrive_at_ktree", inter_rank);
+
+    void* intra_reduce_sbuf = (0 == intra_rank) ? MPI_IN_PLACE : rbuf;
+    void* intra_reduce_rbuf = (0 == intra_rank) ? rbuf : NULL;
 
     switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
     case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
         ret = intra_comm->c_coll->coll_reduce(
-            sbuf, rbuf, count, dtype, op, 0,
+            intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0,
             intra_comm,
             intra_comm->c_coll->coll_reduce_module);
         break;
@@ -300,7 +319,11 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
         return OMPI_ERROR;
         break;
     }
-    _BK_CHK_RET(ret, "intra-node reduce failed");
+    // _BK_CHK_RET(ret, "intra-node reduce failed");
+    if (OMPI_SUCCESS != ret) {
+        BKPAP_ERROR("Intra-reduce failed, rank (%d, %d) returned %d (%s) exiting", inter_rank, intra_rank, ret, opal_strerror(ret));
+        return ret;
+    }
 
     BKPAP_PROFILE("finish_intra_reduce", inter_rank);
 
@@ -317,8 +340,8 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
 #endif
 
         for (int sync_round = 0; sync_round < bkpap_module->remote_syncstructure->ss_counter_len; sync_round++) {
-            uint64_t counter_offset = (sync_round * sizeof(int64_t));
-            size_t arrival_arr_offset = (bkpap_module->remote_syncstructure->ss_arrival_arr_offsets[sync_round] * sizeof(int64_t));
+            uint64_t counter_offset = sync_round;
+            uint64_t arrival_arr_offset = bkpap_module->remote_syncstructure->ss_arrival_arr_offsets[sync_round];
 
             // BKPAP_OUTPUT("round: %d, rank: %d, counter_offset: %ld, arrival_arr_offset: %ld", sync_round, inter_rank, counter_offset, arrival_arr_offset);
             ret = mca_coll_bkpap_arrive_ss(inter_rank, counter_offset, arrival_arr_offset, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
@@ -333,7 +356,7 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
                 // TODO: this num_reduction logic only works for (k == 4) and (wsize is a power of 2),
                 // TODO: might want to fix at some point
                 int num_reductions = (_bk_int_pow(k, (sync_round + 1)) <= inter_size) ? k - 1 : 1;
-                ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_reductions, bkpap_module);
+                ret = mca_coll_bkpap_reduce_postbufs(rbuf, dtype, count, op, num_reductions, inter_comm, bkpap_module);
                 _BK_CHK_RET(ret, "reduce postbuf failed");
                 BKPAP_PROFILE("reduce_pbuf", inter_rank);
             }
@@ -466,22 +489,24 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_communicator_t* ss_inter_comm = (is_multinode) ? bkpap_module->inter_comm : comm;
     struct ompi_communicator_t* ss_intra_comm = (is_multinode) ? bkpap_module->intra_comm : &ompi_mpi_comm_self.comm;
 
-    BKPAP_OUTPUT("comm rank: %d, intra rank: %d, inter rank: %d, alg %d", ompi_comm_rank(comm),
-        ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), alg);
+    BKPAP_OUTPUT("comm rank: %d, intra rank: %d, inter rank: %d, is_multinode: %d, alg %d", ompi_comm_rank(comm),
+        ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), is_multinode, alg);
 
-    
-    if(OPAL_UNLIKELY(NULL == mca_coll_bkpap_component.ucp_context)){
-        ret = mca_coll_bkpap_init_ucx(mca_coll_bkpap_component.enable_threads);
-        if (OMPI_SUCCESS != ret) {
-            BKPAP_ERROR("UCX Initialization Failed");
-            goto bkpap_ar_fallback;
-        }
-        BKPAP_OUTPUT("UCX Initialization SUCCESS");
-    }
-    
 
     if (OPAL_UNLIKELY((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
         || (!is_multinode && !bkpap_module->ucp_is_initialized))) {
+
+
+        if (OPAL_UNLIKELY(NULL == mca_coll_bkpap_component.ucp_context)) {
+            ret = mca_coll_bkpap_init_ucx(mca_coll_bkpap_component.enable_threads);
+            if (OMPI_SUCCESS != ret) {
+                BKPAP_ERROR("UCX Initialization Failed");
+                goto bkpap_ar_fallback;
+            }
+            BKPAP_OUTPUT("UCX Initialization SUCCESS");
+        }
+
+
         ret = mca_coll_bkpap_wireup_endpoints(bkpap_module, ss_inter_comm);
         if (OMPI_SUCCESS != ret) {
             BKPAP_ERROR("Endpoint Wireup Failed, fallingback");
@@ -555,7 +580,6 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             BKPAP_OUTPUT("SS initalized at intra %d inter %d global %d, arirval_arr: %s, count_arr: %s", ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), ompi_comm_rank(comm), arrival_str, count_str);
         }
 #endif
-
         bkpap_module->ucp_is_initialized = 1;
     }
 
