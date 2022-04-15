@@ -31,6 +31,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
     .priority = 35,
+    .dataplane_type = 0,
     .bk_postbuf_memory_type = BKPAP_POSTBUF_MEMORY_TYPE_HOST,
     .ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST
 };
@@ -96,6 +97,11 @@ static int bkpap_register(void) {
         "postbuf_mem_type", "postbuf memory types, {0:Host, 1:CUDA, 2:CUDA Managed}",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.bk_postbuf_memory_type);
+
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "dataplane_type", "UCX primative to use for dataplane, {0:RMA, 1:TAG}",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.dataplane_type);
 
     return OMPI_SUCCESS;
 }

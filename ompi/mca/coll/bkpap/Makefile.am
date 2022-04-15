@@ -9,12 +9,15 @@ NVCCFLAGS = ${NVCC_CFLAGS} ${AM_CPPFLAGS} ${coll_bkpap_CPPFLAGS} --compiler-opti
 
 .cu.lo:
 	/bin/bash $(top_srcdir)/cuda_lt.sh "$(LIBTOOL)" $@ $(NVCC) -c $< $(NVCCFLAGS) $(NVCC_ARCH)
+	
+headers = coll_bkpap.h coll_bkpap_ucp.inl 
 
-sources = coll_bkpap_module.c coll_bkpap_allreduce.c \
-		  coll_bkpap_component.c coll_bkpap_ucp.c \
+sources = coll_bkpap_module.c coll_bkpap_allreduce.c coll_bkpap_component.c \
+		  coll_bkpap_ucp.c \
 		  bkpap_kernel.h bkpap_kernel.cu \
 		  coll_bkpap_reduce.c \
-		  coll_bkpap.h
+		  coll_bkpap_dplane_rma.c coll_bkpap_dplane_tag.c 
+		 
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la

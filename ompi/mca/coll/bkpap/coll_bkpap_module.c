@@ -1,8 +1,10 @@
 #include "coll_bkpap.h"
 #include "opal/util/show_help.h"
 
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include <cuda.h>
 #include <cuda_runtime.h>
+#pragma GCC diagnostic pop
 
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 	memset(&(module->endof_super), 0, sizeof(*module) - sizeof(module->super));
@@ -61,12 +63,12 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	free(module->remote_pbuffs.dbell_addr_arr);
 	module->remote_pbuffs.dbell_addr_arr = NULL;
 
-	if (NULL != module->local_pbuffs.postbuf_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.postbuf_h);
+	if (NULL != module->local_pbuffs.rma.postbuf_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.postbuf_h);
 	}
-	module->local_pbuffs.postbuf_h = NULL;
-	module->local_pbuffs.postbuf_attrs.address = NULL;
-	void* free_local_pbuff = module->local_pbuffs.postbuf_attrs.address;
+	module->local_pbuffs.rma.postbuf_h = NULL;
+	module->local_pbuffs.rma.postbuf_attrs.address = NULL;
+	void* free_local_pbuff = module->local_pbuffs.rma.postbuf_attrs.address;
 	if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
 		|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type
 		) {
@@ -75,11 +77,11 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	else {
 		free(free_local_pbuff);
 	}
-	if (NULL != module->local_pbuffs.dbell_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.dbell_h);
+	if (NULL != module->local_pbuffs.rma.dbell_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.dbell_h);
 	}
-	module->local_pbuffs.dbell_h = NULL;
-	module->local_pbuffs.dbell_attrs.address = NULL;
+	module->local_pbuffs.rma.dbell_h = NULL;
+	module->local_pbuffs.rma.dbell_attrs.address = NULL;
 
 	for (int32_t i = 0; i < module->wsize; i++) {
 		if (NULL == module->ucp_ep_arr) break;
@@ -184,4 +186,98 @@ bkpap_wireup_hier_comms_err:
 	return ret;
 #undef _BKPAP_CHK_MPI
 #undef _BKPAP_CHK_MALLOC
+}
+
+int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, struct ompi_communicator_t* comm, int alg) {
+	int ret = OMPI_SUCCESS;
+
+	if (OPAL_UNLIKELY(NULL == mca_coll_bkpap_component.ucp_context)) {
+		ret = mca_coll_bkpap_init_ucx(mca_coll_bkpap_component.enable_threads);
+		if (OMPI_SUCCESS != ret) {
+			BKPAP_ERROR("UCX Initialization Failed");
+			return ret;
+		}
+		BKPAP_OUTPUT("UCX Initialization SUCCESS");
+	}
+
+	ret = mca_coll_bkpap_wireup_endpoints(bkpap_module, comm);
+	if (OMPI_SUCCESS != ret) {
+		BKPAP_ERROR("Endpoint Wireup Failed, fallingback");
+		return ret;
+	}
+
+	int num_postbufs = (mca_coll_bkpap_component.allreduce_k_value - 1); // should depend on component.alg
+	switch (mca_coll_bkpap_component.dataplane_type) {
+	case BKPAP_DATAPLANE_RMA:
+		ret = mca_coll_bkpap_rma_wireup(num_postbufs, bkpap_module, comm);
+		if (OMPI_SUCCESS != ret) {
+			BKPAP_ERROR("RMA Wireup Failed, fallingback");
+			return ret;
+		}
+		break;
+
+	case BKPAP_DATAPLANE_TAG:
+		ret = mca_coll_bkpap_tag_wireup(num_postbufs, bkpap_module, comm);
+		BKPAP_ERROR("TAG WIREUP NOT IMPLEMENTED");
+		if (OMPI_SUCCESS != ret) {
+			BKPAP_ERROR("TAG Wireup Failed, fallingback");
+			return ret;
+		}
+		break;
+	default:
+		BKPAP_ERROR("BAD DATAPLANE TYPE SELECTED %d, options are {0:RMA, 1:TAG}", mca_coll_bkpap_component.dataplane_type);
+		return OMPI_ERROR;
+		break;
+	}
+
+	// TODO: refactor into 'bkpap_precalc_ktree/ktree_pipeline/rsa'
+	int k = mca_coll_bkpap_component.allreduce_k_value;
+	int num_syncstructures = 1;
+	size_t counter_arr_len = 0; // log_k(wsize);
+	size_t arrival_arr_len = 0; // wsize + wsize/k + wsize/k^2 + wsize/k^3 ...
+	int64_t* arrival_arr_offsets_tmp = NULL;
+	switch (alg) {
+	case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
+		num_syncstructures = 2;
+		counter_arr_len = 1;
+		arrival_arr_len = ompi_comm_size(comm);
+		arrival_arr_offsets_tmp = NULL;
+		break;
+	case BKPAP_ALLREDUCE_ALG_KTREE:
+		for (int i = 1; i < ompi_comm_size(comm); i *= k)
+			counter_arr_len++;
+		arrival_arr_offsets_tmp = calloc(counter_arr_len, sizeof(*arrival_arr_offsets_tmp));
+
+		for (size_t i = 0; i < counter_arr_len; i++) {
+			int k_pow_i = 1;
+			for (size_t j = 0; j < i; j++)
+				k_pow_i *= k;
+			arrival_arr_len += (ompi_comm_size(comm) / k_pow_i);
+			if ((i + 1) != counter_arr_len)
+				arrival_arr_offsets_tmp[i + 1] = arrival_arr_offsets_tmp[i] + (ompi_comm_size(comm) / k_pow_i);
+		}
+		break;
+	case BKPAP_ALLREDUCE_ALG_RSA:
+		BKPAP_ERROR("bkpap RSA alg not implemented, aborting");
+		return OPAL_ERR_NOT_IMPLEMENTED;
+		break;
+	default:
+		BKPAP_ERROR("Bad algorithms specified, failed to setup syncstructure");
+		return OMPI_ERROR;
+		break;
+	}
+
+	ret = mca_coll_bkpap_wireup_syncstructure(counter_arr_len, arrival_arr_len, num_syncstructures, bkpap_module, comm);
+	if (OMPI_SUCCESS != ret) {
+		BKPAP_ERROR("Syncstructure Wireup Failed, fallingback");
+		return ret;
+	}
+	for (int i = 0; i < num_syncstructures; i++) {
+		bkpap_module->remote_syncstructure[i].ss_counter_len = counter_arr_len;
+		bkpap_module->remote_syncstructure[i].ss_arrival_arr_len = arrival_arr_len;
+		bkpap_module->remote_syncstructure[i].ss_arrival_arr_offsets = arrival_arr_offsets_tmp;
+	}
+	arrival_arr_offsets_tmp = NULL;
+
+	return ret;
 }

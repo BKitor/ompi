@@ -4,6 +4,10 @@ if [ "$BK_OMB_DIR" == "" ];then
 	echo "No BK_OMPI_DIR, you need to initenv"
 fi
 
+if [ "$1" == "v" ]; then
+	export OMPI_MCA_coll_base_verbose=9
+fi
+
 bk_osu_tst(){
 	echo "bkpap_allreduce_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
 	echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
@@ -45,16 +49,24 @@ BK_OSU_PAP="$BK_OMB_DIR/build/libexec/osu-micro-benchmarks/mpi/collective/bk_osu
 
 export OMPI_MCA_coll_cuda_priority=31
 export OMPI_MCA_coll_bkpap_priority=35
-export OMPI_MCA_coll_base_verbose=9
+# export OMPI_MCA_coll_base_verbose=9
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=1
 export OMPI_MCA_coll_bkpap_postbuf_mem_type=0
 BK_OMB_FLAGS=""
 BK_MIN_MSIZE=$((1<<23))
-BK_MAX_MSIZE=$((1<<23))
+BK_MAX_MSIZE=$((1<<25))
 export OMPI_MCA_coll_bkpap_postbuff_size=$BK_MAX_MSIZE
-BK_EXP_FLAGS="-x 0 -i 20"
-BK_NUM_PROC=16 bk_osu_tst
+BK_EXP_FLAGS="-x 3 -i 30"
+# BK_NUM_PROC=4 bk_osu_tst
+# BK_NUM_PROC=8 bk_osu_tst
+
+# export OMPI_MCA_coll_bkpap_allreduce_alg=0
+# BK_NUM_PROC=4 bk_osu_tst
+
+export OMPI_MCA_coll_bkpap_allreduce_alg=0
+BK_NUM_PROC=4 bk_val_tst
+BK_NUM_PROC=8 bk_val_tst
 
 # export OMPI_MCA_coll_bkpap_postbuf_mem_type=1
 # BK_OMB_FLAGS="-d cuda"

@@ -38,19 +38,25 @@ enum mca_coll_bkpap_dbell_state {
 	BKPAP_DBELL_SET = 1,
 };
 
-typedef enum mca_coll_bkpap_allreduce_algs {
+typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_KTREE = 0,
 	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
 	BKPAP_ALLREDUCE_ALG_RSA = 2,
 	BKPAP_ALLREDUCE_ALG_COUNT
 } mca_coll_bkpap_allreduce_algs_t;
 
-typedef enum mca_coll_bkpap_postbuf_memory_type {
+typedef enum mca_coll_bkpap_postbuf_memory_t {
 	BKPAP_POSTBUF_MEMORY_TYPE_HOST = 0,
 	BKPAP_POSTBUF_MEMORY_TYPE_CUDA = 1,
 	BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED = 2,
 	BKPAP_POSTBUF_MEMORY_TYPE_COUNT
-} mca_coll_bkpap_postbuf_memory_type_t;
+} mca_coll_bkpap_postbuf_memory_t;
+
+typedef enum mca_coll_bkpap_dataplane_t {
+	BKPAP_DATAPLANE_RMA = 0,
+	BKPAP_DATAPLANE_TAG = 1,
+	BKPAP_DATAPLANE_COUNT
+}mca_coll_bkpap_dataplane_t;
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
 	bool enable_mpi_threads);
@@ -85,20 +91,30 @@ typedef struct mca_coll_bkpap_remote_syncstruct_t {
 
 } mca_coll_bkpap_remote_syncstruct_t;
 
-typedef struct mca_coll_bkpap_local_postbuf_t {
+typedef struct mca_coll_bkpap_local_rma_postbuf_t {
 	int num_buffs;
 	ucp_mem_h dbell_h;
 	ucp_mem_attr_t dbell_attrs;
 	ucp_mem_h postbuf_h;
 	ucp_mem_attr_t postbuf_attrs;
-} mca_coll_bkpap_local_postbuf_t;
+} mca_coll_bkpap_local_rma_postbuf_t;
 
-typedef struct mca_coll_bkpap_remote_postbuf_t {
+typedef struct mca_coll_bkpap_remote_rma_postbuf_t {
 	ucp_rkey_h* dbell_rkey_arr; // mpi_wsize array of dbell-buffers for each rank
 	uint64_t* dbell_addr_arr;
 	ucp_rkey_h* buffer_rkey_arr;// mpi_wsize array of postbuf-sized buffers for each rank
 	uint64_t* buffer_addr_arr;
-} mca_coll_bkpap_remote_postbuf_t;
+} mca_coll_bkpap_remote_rma_postbuf_t;
+
+typedef struct mca_coll_bkpap_local_tag_postbuf_t {
+	void* buff_arr;
+	size_t buff_size;
+	int num_buffs;
+	mca_coll_bkpap_postbuf_memory_t mem_type;
+} mca_coll_bkpap_local_tag_postbuf_t;
+
+// typedef int (*bkpap_dataplane_send_t)(const void* buf, struct ompi_datatype_t* dtype, int count, int send_rank, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
+// typedef int (*bkpap_dataplane_reduce_t)(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_reductions, ompi_communicator_t* comm, mca_coll_base_module_t* module);
 
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
@@ -118,8 +134,12 @@ typedef struct mca_coll_bkpap_module_t {
 
 	ucp_ep_h* ucp_ep_arr;
 
-	mca_coll_bkpap_local_postbuf_t local_pbuffs;
-	mca_coll_bkpap_remote_postbuf_t remote_pbuffs;
+	union {
+		mca_coll_bkpap_local_rma_postbuf_t rma;
+		mca_coll_bkpap_local_tag_postbuf_t tag;
+	} local_pbuffs;
+	mca_coll_bkpap_remote_rma_postbuf_t remote_pbuffs;
+
 
 	int num_syncstructures; // array of ss for pipelining
 	mca_coll_bkpap_local_syncstruct_t* local_syncstructure;
@@ -143,7 +163,10 @@ typedef struct mca_coll_bkpap_component_t {
 	int allreduce_k_value;
 	int allreduce_alg;
 	int priority;
-	mca_coll_bkpap_postbuf_memory_type_t bk_postbuf_memory_type;
+
+	mca_coll_bkpap_dataplane_t dataplane_type;
+
+	mca_coll_bkpap_postbuf_memory_t bk_postbuf_memory_type;
 	ucs_memory_type_t ucs_postbuf_memory_type;
 } mca_coll_bkpap_component_t;
 
@@ -156,33 +179,29 @@ typedef struct mca_coll_bkpap_req_t {
 
 void mca_coll_bkpap_req_init(void* request);
 
+int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, struct ompi_communicator_t* comm, int alg);
 int mca_coll_bkpap_init_ucx(int enable_mpi_threads);
 int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_wireup_postbuffs(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots, int num_structures, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 
 int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t arrival_arr_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int64_t* ret_pos);
 int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, uint64_t arival_round_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, int* rank);
-int mca_coll_bkpap_put_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int send_rank, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+int mca_coll_bkpap_rma_wireup(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_rma_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
+int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_base_module_t* module);
+
+int mca_coll_bkpap_tag_wireup(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
+int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_base_module_t* module);
 
 int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, uint32_t segsize, int max_outstanding_reqs);
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
 
 
-static inline void bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, size_t full_count, ompi_datatype_t* dtype) {
-	if (OPAL_LIKELY(MPI_FLOAT == dtype && MPI_SUM == op)) { // is sum float
-		vec_add_float(source, target, full_count);
-	}
-	else {
-		BKPAP_ERROR("Falling back to ompi impl");
-		// FULL SEND TO A SEGV !!!
-		ompi_op_reduce(op, source, target, full_count, dtype);
-	}
-}
 
 END_C_DECLS
 #endif
