@@ -223,7 +223,7 @@ int mca_coll_bkpap_rma_send_postbuf(const void* buf,
 	}
 
 	status = ucp_worker_fence(mca_coll_bkpap_component.ucp_worker);
-	if (UCS_OK != status) {
+	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("Worker fence failed");
 		return OMPI_ERROR;
 	}
@@ -269,8 +269,7 @@ int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* 
 			bk_gpu_op_reduce(op, recived_buffer, local_buf, count, dtype);
 			break;
 		case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-			ompi_op_reduce(op, recived_buffer,
-				local_buf, count, dtype);
+			ompi_op_reduce(op, recived_buffer, local_buf, count, dtype);
 			break;
 		default:
 			BKPAP_ERROR("Bad memory type, %d", mca_coll_bkpap_component.bk_postbuf_memory_type);

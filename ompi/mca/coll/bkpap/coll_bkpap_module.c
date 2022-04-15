@@ -63,25 +63,31 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	free(module->remote_pbuffs.dbell_addr_arr);
 	module->remote_pbuffs.dbell_addr_arr = NULL;
 
-	if (NULL != module->local_pbuffs.rma.postbuf_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.postbuf_h);
+	if (BKPAP_DATAPLANE_RMA == mca_coll_bkpap_component.dataplane_type) {
+		if (NULL != module->local_pbuffs.rma.postbuf_h) {
+			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.postbuf_h);
+		}
+		module->local_pbuffs.rma.postbuf_h = NULL;
+		module->local_pbuffs.rma.postbuf_attrs.address = NULL;
+		void* free_local_pbuff = module->local_pbuffs.rma.postbuf_attrs.address;
+		if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
+			|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type
+			) {
+			cudaFree(free_local_pbuff);
+		}
+		else {
+			free(free_local_pbuff);
+		}
+		if (NULL != module->local_pbuffs.rma.dbell_h) {
+			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.dbell_h);
+		}
+		module->local_pbuffs.rma.dbell_h = NULL;
+		module->local_pbuffs.rma.dbell_attrs.address = NULL;
 	}
-	module->local_pbuffs.rma.postbuf_h = NULL;
-	module->local_pbuffs.rma.postbuf_attrs.address = NULL;
-	void* free_local_pbuff = module->local_pbuffs.rma.postbuf_attrs.address;
-	if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
-		|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type
-		) {
-		cudaFree(free_local_pbuff);
+	else if(BKPAP_DATAPLANE_TAG == mca_coll_bkpap_component.dataplane_type){
+		free(module->local_pbuffs.tag.buff_arr);
+		module->local_pbuffs.tag.buff_arr = NULL;
 	}
-	else {
-		free(free_local_pbuff);
-	}
-	if (NULL != module->local_pbuffs.rma.dbell_h) {
-		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.dbell_h);
-	}
-	module->local_pbuffs.rma.dbell_h = NULL;
-	module->local_pbuffs.rma.dbell_attrs.address = NULL;
 
 	for (int32_t i = 0; i < module->wsize; i++) {
 		if (NULL == module->ucp_ep_arr) break;
@@ -218,7 +224,6 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 
 	case BKPAP_DATAPLANE_TAG:
 		ret = mca_coll_bkpap_tag_wireup(num_postbufs, bkpap_module, comm);
-		BKPAP_ERROR("TAG WIREUP NOT IMPLEMENTED");
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("TAG Wireup Failed, fallingback");
 			return ret;

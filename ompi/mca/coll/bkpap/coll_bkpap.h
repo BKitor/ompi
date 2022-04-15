@@ -113,9 +113,6 @@ typedef struct mca_coll_bkpap_local_tag_postbuf_t {
 	mca_coll_bkpap_postbuf_memory_t mem_type;
 } mca_coll_bkpap_local_tag_postbuf_t;
 
-// typedef int (*bkpap_dataplane_send_t)(const void* buf, struct ompi_datatype_t* dtype, int count, int send_rank, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
-// typedef int (*bkpap_dataplane_reduce_t)(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_reductions, ompi_communicator_t* comm, mca_coll_base_module_t* module);
-
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
 	void* endof_super; // clever/hacky solution for memory allocation, see mca_coll_bkpap_module_construct for use, better solution migth exist
@@ -200,8 +197,6 @@ int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* 
 
 int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, uint32_t segsize, int max_outstanding_reqs);
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
-
-
 
 END_C_DECLS
 #endif

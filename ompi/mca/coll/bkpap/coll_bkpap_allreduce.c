@@ -188,7 +188,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
                     BKPAP_OUTPUT("DBG sync_mask: %d, k: %d, inter_size: %d, num_reductions: %d", sync_mask, k, inter_size, num_reductions);
                     BKPAP_OUTPUT("START_PBUF_REDUCE: seg_index: %d, rank: %d, num_reductions: %d, count: %d", seg_index, inter_rank, num_reductions, bcast_count);
                     BKPAP_PROFILE("start_postbuf_reduce", inter_rank);
-                    mca_coll_bkpap_reduce_dataplane(seg_buf, dtype, bcast_count, op, num_reductions, inter_comm, &bkpap_module->super);
+                    ret = mca_coll_bkpap_reduce_dataplane(seg_buf, dtype, bcast_count, op, num_reductions, inter_comm, &bkpap_module->super);
                     BKPAP_PROFILE("leave_postbuf_reduce", inter_rank);
                     _BK_CHK_RET(ret, "reduce postbuf failed");
                     BKPAP_OUTPUT("LEAVE_PBUF_REDUCE: seg_index: %d, rank: %d, sync_round: %d", seg_index, inter_rank, sync_round);
@@ -209,7 +209,6 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
                     BKPAP_OUTPUT("SEND_PARENT: seg_index: %d, rank: %d, arrival: %ld, send_rank: %d, send_arrival: %d, slot: %d, sync_mask: %d",
                         seg_index, inter_rank, arrival_pos, send_rank, send_arrival_pos, slot, sync_mask);
-                    // ret = bkpap_module->send_dataplane(seg_buf, dtype, bcast_count, send_rank, slot, inter_comm, &bkpap_module->super);
                     ret = mca_coll_bkpap_send_dataplane(seg_buf, dtype, bcast_count, send_rank, slot, inter_comm, &bkpap_module->super);
                     _BK_CHK_RET(ret, "write parrent postuf failed");
                     BKPAP_PROFILE("sent_parent_rank", inter_rank);
@@ -361,7 +360,6 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
                 // TODO: this num_reduction logic only works for (k == 4) and (wsize is a power of 2),
                 // TODO: might want to fix at some point
                 int num_reductions = (_bk_int_pow(k, (sync_round + 1)) <= inter_size) ? k - 1 : 1;
-                // ret = mca_coll_bkpap_rma_reduce_postbufs(rbuf, dtype, count, op, num_reductions, inter_comm, &bkpap_module->super);
                 ret = mca_coll_bkpap_reduce_dataplane(rbuf, dtype, count, op, num_reductions, inter_comm, &bkpap_module->super);
                 _BK_CHK_RET(ret, "reduce postbuf failed");
                 BKPAP_PROFILE("reduce_pbuf", inter_rank);
@@ -448,6 +446,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
     int ret = OMPI_SUCCESS, alg = mca_coll_bkpap_component.allreduce_alg;
     size_t dsize = -1, total_dsize = -1;
+    
+    // TODO: Think about fastpath optimization
 
     if (OPAL_UNLIKELY(alg >= BKPAP_ALLREDUCE_ALG_COUNT)) {
         BKPAP_ERROR("Selected alg %d not available, change OMPI_MCA_coll_bkpap_allreduce_alg", alg);
