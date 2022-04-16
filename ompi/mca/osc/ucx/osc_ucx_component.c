@@ -1,6 +1,9 @@
 /*
  * Copyright (C) Mellanox Technologies Ltd. 2001-2017. ALL RIGHTS RESERVED.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
+ * Copyright (c) 2021      Triad National Security, LLC. All rights
+ *                         reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -392,7 +395,7 @@ select_unlock:
     }
 
     *model = MPI_WIN_UNIFIED;
-    opal_asprintf(&name, "ucx window %d", ompi_comm_get_cid(module->comm));
+    opal_asprintf(&name, "ucx window %s", ompi_comm_print_cid(module->comm));
     ompi_win_set_name(win, name);
     free(name);
 
@@ -581,7 +584,7 @@ int ompi_osc_find_attached_region_position(ompi_osc_dynamic_win_info_t *dynamic_
     if (dynamic_wins[mid_index].base > base) {
         return ompi_osc_find_attached_region_position(dynamic_wins, min_index, mid_index-1,
                                                       base, len, insert);
-    } else if (base + len < dynamic_wins[mid_index].base + dynamic_wins[mid_index].size) {
+    } else if (base + len <= dynamic_wins[mid_index].base + dynamic_wins[mid_index].size) {
         return mid_index;
     } else {
         return ompi_osc_find_attached_region_position(dynamic_wins, mid_index+1, max_index,

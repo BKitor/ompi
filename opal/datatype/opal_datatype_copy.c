@@ -15,6 +15,7 @@
  * Copyright (c) 2013      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,6 +49,8 @@ static size_t opal_datatype_memop_block_size = 128 * 1024;
 /**
  * Non overlapping memory regions
  */
+#undef MEM_OP_BLOCK_SIZE
+#define MEM_OP_BLOCK_SIZE opal_datatype_memop_block_size
 #undef MEM_OP_NAME
 #define MEM_OP_NAME non_overlap
 #undef MEM_OP
@@ -73,8 +76,10 @@ static size_t opal_datatype_memop_block_size = 128 * 1024;
 #include "opal_datatype_copy.h"
 
 #if OPAL_CUDA_SUPPORT
-#    include "opal/mca/common/cuda/common_cuda.h"
+#    include "opal/cuda/common_cuda.h"
 
+#    undef MEM_OP_BLOCK_SIZE
+#    define MEM_OP_BLOCK_SIZE total_length
 #    undef MEM_OP_NAME
 #    define MEM_OP_NAME non_overlap_cuda
 #    undef MEM_OP

@@ -5,7 +5,7 @@
  * Copyright (c) 2014-2021 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2015-2016 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.  All Rights reserved.
+ * Copyright (c) 2018-2022 Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2020-2021 Triad National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
@@ -21,7 +21,7 @@
 #include "opal/util/printf.h"
 #include "opal/mca/common/ofi/common_ofi.h"
 #if OPAL_CUDA_SUPPORT
-#include "opal/mca/common/cuda/common_cuda.h"
+#include "opal/cuda/common_cuda.h"
 #endif /* OPAL_CUDA_SUPPORT */
 
 static int ompi_mtl_ofi_component_open(void);
@@ -664,7 +664,7 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
        interface and local communication and remote communication. */
     hints->mode               = FI_CONTEXT | FI_CONTEXT2;
     hints->ep_attr->type      = FI_EP_RDM;
-    hints->caps               |= FI_TAGGED | FI_LOCAL_COMM | FI_REMOTE_COMM | FI_DIRECTED_RECV;
+    hints->caps               |= FI_MSG | FI_TAGGED | FI_LOCAL_COMM | FI_REMOTE_COMM | FI_DIRECTED_RECV;
     hints->tx_attr->msg_order = FI_ORDER_SAS;
     hints->rx_attr->msg_order = FI_ORDER_SAS;
     hints->rx_attr->op_flags  = FI_COMPLETION;
@@ -1099,6 +1099,10 @@ select_prov:
      * Set the ANY_SRC address.
      */
     ompi_mtl_ofi.any_addr = FI_ADDR_UNSPEC;
+    ompi_mtl_ofi.is_initialized = false;
+    ompi_mtl_ofi.has_posted_initial_buffer = false;
+    
+    ompi_mtl_ofi.base.mtl_flags |= MCA_MTL_BASE_FLAG_SUPPORTS_EXT_CID;
 
 #if OPAL_CUDA_SUPPORT
     mca_common_cuda_stage_one_init();

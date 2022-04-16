@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2011 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2014 The University of Tennessee and The University
+ * Copyright (c) 2004-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
@@ -19,6 +19,7 @@
  * Copyright (c) 2014-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,7 +58,7 @@
 #include "opal/mca/common/sm/common_sm_mpool.h"
 
 #if OPAL_CUDA_SUPPORT
-#    include "opal/mca/common/cuda/common_cuda.h"
+#    include "opal/cuda/common_cuda.h"
 #endif /* OPAL_CUDA_SUPPORT */
 #include "opal/mca/mpool/base/base.h"
 #include "opal/mca/rcache/base/base.h"
@@ -876,11 +877,7 @@ int mca_btl_smcuda_sendi(struct mca_btl_base_module_t *btl,
     }
     /* We do not want to use this path when we have CUDA IPC support */
     if ((convertor->flags & CONVERTOR_CUDA) && (IPC_ACKED == endpoint->ipcstate)) {
-        if (NULL != descriptor) {
-            *descriptor = mca_btl_smcuda_alloc(btl, endpoint, order, payload_size + header_size,
-                                               flags);
-        }
-        return OPAL_ERR_RESOURCE_BUSY;
+        goto return_resource_busy;
     }
 #endif /* OPAL_CUDA_SUPPORT */
 
@@ -891,8 +888,7 @@ int mca_btl_smcuda_sendi(struct mca_btl_base_module_t *btl,
         /* note that frag==NULL is equivalent to rc returning an error code */
         MCA_BTL_SMCUDA_FRAG_ALLOC_EAGER(frag);
         if (OPAL_UNLIKELY(NULL == frag)) {
-            *descriptor = NULL;
-            return OPAL_ERR_OUT_OF_RESOURCE;
+            goto return_resource_busy;
         }
 
         /* fill in fragment fields */
@@ -942,8 +938,10 @@ int mca_btl_smcuda_sendi(struct mca_btl_base_module_t *btl,
         return OPAL_SUCCESS;
     }
 
-    /* presumably, this code path will never get executed */
-    *descriptor = mca_btl_smcuda_alloc(btl, endpoint, order, payload_size + header_size, flags);
+  return_resource_busy:
+    if (NULL != descriptor) {
+        *descriptor = mca_btl_smcuda_alloc(btl, endpoint, order, length, flags);
+    }
     return OPAL_ERR_RESOURCE_BUSY;
 }
 

@@ -113,6 +113,7 @@ interface_profile_sources = \
         comm_connect.c \
         comm_create.c \
         comm_create_errhandler.c \
+        comm_create_from_group.c \
         comm_create_group.c \
         comm_create_keyval.c \
         comm_delete_attr.c \
@@ -251,6 +252,7 @@ interface_profile_sources = \
         group_excl.c \
         group_f2c.c \
         group_free.c \
+        group_from_session_pset.c \
         group_incl.c \
         group_intersection.c \
         group_range_excl.c \
@@ -278,6 +280,7 @@ interface_profile_sources = \
         init_thread.c \
         initialized.c \
         intercomm_create.c \
+        intercomm_create_from_groups.c \
         intercomm_merge.c \
         iprobe.c \
         irecv.c \
@@ -365,6 +368,16 @@ interface_profile_sources = \
         send_init.c \
         sendrecv.c \
         sendrecv_replace.c \
+        session_c2f.c \
+        session_create_errhandler.c \
+        session_get_info.c \
+        session_get_num_psets.c \
+        session_get_nth_pset.c \
+        session_get_pset_info.c \
+        session_init.c \
+        session_f2c.c \
+        session_finalize.c \
+        session_set_info.c \
         ssend_init.c \
         ssend.c \
         start.c \
@@ -471,7 +484,10 @@ interface_profile_sources = \
         win_unlock_all.c \
         win_wait.c
 
-if OMPI_ENABLE_MPI1_COMPAT
+# The following functions were removed from the MPI standard, but are
+# retained for ABI compliance reasons.  They are listed independently
+# of the other MPI functions in case we one day change behavior around
+# ABI compliance.
 interface_profile_sources += \
         address.c \
         errhandler_create.c \
@@ -483,7 +499,6 @@ interface_profile_sources += \
         type_lb.c \
         type_struct.c \
         type_ub.c
-endif
 
 libmpi_c_profile_la_SOURCES = $(interface_profile_sources)
 libmpi_c_profile_la_CPPFLAGS = -DOMPI_BUILD_MPI_PROFILING=1

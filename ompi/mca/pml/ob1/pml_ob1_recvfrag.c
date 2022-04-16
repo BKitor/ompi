@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2019 The University of Tennessee and The University
+ * Copyright (c) 2004-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
@@ -20,7 +20,11 @@
  * Copyright (c) 2018      Sandia National Laboratories
  *                         All rights reserved.
  * Copyright (c) 2020      Google, LLC. All rights reserved.
+ * Copyright (c) 2020-2021 Triad National Security, LLC. All rights
+ *                         reserved.
  * Copyright (c) 2021      Cisco Systems, Inc.  All rights reserved
+ * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,7 +55,7 @@
 #include "pml_ob1_sendreq.h"
 #include "pml_ob1_hdr.h"
 #if OPAL_CUDA_SUPPORT
-#include "opal/mca/common/cuda/common_cuda.h"
+#include "opal/cuda/common_cuda.h"
 #endif /* OPAL_CUDA_SUPPORT */
 
 OBJ_CLASS_INSTANCE( mca_pml_ob1_buffer_t,
@@ -367,7 +371,7 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
         /* note this is not an ompi_proc, but a ob1_comm_proc, thus we don't
          * use ompi_proc_is_sentinel to verify if initialized. */
         if( NULL == proc ) continue;
-        /* remove the frag from the unexpected list, add to the nack list 
+        /* remove the frag from the unexpected list, add to the nack list
          * so that we can send the nack as needed to remote cancel the send
          * from outside the match lock.
          */
@@ -382,7 +386,7 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
             }
         }
         /* same for the cantmatch queue/heap; this list is more complicated
-         * Keep it simple: we pop all of the complex list, put the bad items 
+         * Keep it simple: we pop all of the complex list, put the bad items
          * in the nack_list, and keep the good items in the keep_list;
          * then we reinsert the good items in the cantmatch heaplist */
         mca_pml_ob1_recv_frag_t* frag;
@@ -405,8 +409,8 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
 #if OPAL_ENABLE_DEBUG
     if( opal_list_get_size(&nack_list) ) {
         OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
-                             "ob1_revoke_comm: purging unexpected and cantmatch frags for in comm %d (%s): nacking %zu frags",
-                             ompi_comm->c_contextid, coll_only ? "collective frags only" : "all revoked",
+                             "ob1_revoke_comm: purging unexpected and cantmatch frags for in comm %s (%s): nacking %zu frags",
+                             ompi_comm_print_cid(ompi_comm), coll_only ? "collective frags only" : "all revoked",
                              opal_list_get_size(&nack_list)));
         if( verbose > 15) mca_pml_ob1_dump(ompi_comm, verbose);
     }
@@ -477,8 +481,8 @@ void mca_pml_ob1_recv_frag_callback_match (mca_btl_base_module_t *btl,
          * this pending queue will be searched and all matching fragments
          * moved to the right communicator.
          */
-        append_frag_to_list( &mca_pml_ob1.non_existing_communicator_pending,
-                             btl, hdr, segments, num_segments, NULL );
+        append_frag_to_list( &mca_pml_ob1.non_existing_communicator_pending, btl,
+                             hdr, segments, num_segments, NULL );
         return;
     }
     comm = (mca_pml_ob1_comm_t *)comm_ptr->c_pml_comm;
@@ -516,7 +520,7 @@ void mca_pml_ob1_recv_frag_callback_match (mca_btl_base_module_t *btl,
     }
 #endif
 
-    if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr)) {
+    if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr) || 0 > hdr->hdr_tag) {
         /* get sequence number of next message that can be processed.
          * If this frag is out of sequence, queue it up in the list
          * now as we still have the lock.
@@ -634,6 +638,38 @@ void mca_pml_ob1_recv_frag_callback_match (mca_btl_base_module_t *btl,
     }
 }
 
+/**
+ * Merge all out of sequence fragments into the matching queue, as if they were received now.
+ */
+int mca_pml_ob1_merge_cant_match( ompi_communicator_t * ompi_comm )
+{
+    mca_pml_ob1_comm_t * pml_comm = (mca_pml_ob1_comm_t *)ompi_comm->c_pml_comm;
+    mca_pml_ob1_recv_frag_t *frag, *frags_cant_match;
+    mca_pml_ob1_comm_proc_t* proc;
+    int cnt = 0;
+
+    for (uint32_t i = 0; i < pml_comm->num_procs; i++) {
+        if ((NULL == (proc = pml_comm->procs[i])) || (NULL != proc->frags_cant_match)) {
+            continue;
+        }
+
+        OB1_MATCHING_LOCK(&pml_comm->matching_lock);
+        /* Acquire all cant_match frags from the peer */
+        frags_cant_match = proc->frags_cant_match;
+        proc->frags_cant_match = NULL;
+        while(NULL != (frag = remove_head_from_ordered_list(&frags_cant_match))) {
+            /* mca_pml_ob1_recv_frag_match_proc() will release the lock. */
+            mca_pml_ob1_recv_frag_match_proc(frag->btl, ompi_comm, proc,
+                                             &frag->hdr.hdr_match,
+                                             frag->segments, frag->num_segments,
+                                             frag->hdr.hdr_match.hdr_common.hdr_type, frag);
+            OB1_MATCHING_LOCK(&pml_comm->matching_lock);
+            cnt++;
+        }
+    }
+    OB1_MATCHING_UNLOCK(&pml_comm->matching_lock);
+    return cnt;
+}
 
 void mca_pml_ob1_recv_frag_callback_rndv (mca_btl_base_module_t *btl,
                                           const mca_btl_base_receive_descriptor_t *descriptor)
@@ -682,7 +718,7 @@ void mca_pml_ob1_recv_frag_callback_ack (mca_btl_base_module_t *btl,
 #if OPAL_ENABLE_FT_MPI
     /* if the req_recv is NULL, the comm has been revoked at the receiver */
     if( OPAL_UNLIKELY(NULL == sendreq->req_recv.pval) ) {
-        OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, "Recvfrag: Received a NACK to the RDV/RGET match to %d for seq %" PRIu64 " on comm %d\n", sendreq->req_send.req_base.req_peer, sendreq->req_send.req_base.req_sequence, sendreq->req_send.req_base.req_comm->c_contextid));
+        OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, "Recvfrag: Received a NACK to the RDV/RGET match to %d for seq %" PRIu64 " on comm %s\n", sendreq->req_send.req_base.req_peer, sendreq->req_send.req_base.req_sequence, ompi_comm_print_cid(sendreq->req_send.req_base.req_comm)));
         if (NULL != sendreq->rdma_frag) {
             MCA_PML_OB1_RDMA_FRAG_RETURN(sendreq->rdma_frag);
             sendreq->rdma_frag = NULL;
@@ -1038,8 +1074,8 @@ static int mca_pml_ob1_recv_frag_match (mca_btl_base_module_t *btl,
          * this pending queue will be searched and all matching fragments
          * moved to the right communicator.
          */
-        append_frag_to_list( &mca_pml_ob1.non_existing_communicator_pending,
-                             btl, hdr, segments, num_segments, NULL );
+        append_frag_to_list( &mca_pml_ob1.non_existing_communicator_pending, btl,
+                             hdr, segments, num_segments, NULL );
         return OMPI_SUCCESS;
     }
     comm = (mca_pml_ob1_comm_t *)comm_ptr->c_pml_comm;
@@ -1089,7 +1125,7 @@ static int mca_pml_ob1_recv_frag_match (mca_btl_base_module_t *btl,
     frag_msg_seq = hdr->hdr_seq;
     next_msg_seq_expected = (uint16_t)proc->expected_sequence;
 
-    if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr)) {
+    if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr) || 0 > hdr->hdr_tag) {
         /* If the sequence number is wrong, queue it up for later. */
         if(OPAL_UNLIKELY(frag_msg_seq != next_msg_seq_expected)) {
             mca_pml_ob1_recv_frag_t* frag;
@@ -1202,3 +1238,71 @@ mca_pml_ob1_recv_frag_match_proc (mca_btl_base_module_t *btl,
     return OMPI_SUCCESS;
 }
 
+void mca_pml_ob1_handle_cid (ompi_communicator_t *comm, int src, mca_pml_ob1_cid_hdr_t *hdr_cid)
+{
+    mca_pml_ob1_comm_proc_t *ob1_proc = mca_pml_ob1_peer_lookup (comm, src);
+    bool had_comm_index = (-1 != ob1_proc->comm_index);
+
+    if (!had_comm_index) {
+        /* avoid sending too many extra packets. if this doesn't work well then a flag can be added to
+         * the proc to indicate that this packet has been sent */
+        ob1_proc->comm_index = hdr_cid->hdr_src_comm_index;
+
+        /*
+         * if the proc to send to is myself,  no need to do the send
+         */
+        if(ob1_proc->ompi_proc != ompi_proc_local()) {
+            (void) mca_pml_ob1_send_cid (ob1_proc->ompi_proc, comm);
+        }
+    }
+}
+
+void mca_pml_ob1_recv_frag_callback_cid (mca_btl_base_module_t* btl,
+                                         const mca_btl_base_receive_descriptor_t* des)
+{
+    mca_btl_base_segment_t segments[MCA_BTL_DES_MAX_SEGMENTS];
+    mca_pml_ob1_hdr_t *hdr = (mca_pml_ob1_hdr_t *) des->des_segments[0].seg_addr.pval;
+    mca_pml_ob1_match_hdr_t *hdr_match = &hdr->hdr_ext_match.hdr_match;
+    size_t num_segments = des->des_segment_count;
+    ompi_communicator_t *comm;
+
+    memcpy (segments, des->des_segments, num_segments * sizeof (segments[0]));
+    assert (segments->seg_len >= sizeof (hdr->hdr_cid));
+
+    ob1_hdr_ntoh (hdr, hdr->hdr_common.hdr_type);
+
+    /* NTH: this should be ok as as all BTLs create a dummy segment */
+    segments->seg_len -= offsetof (mca_pml_ob1_ext_match_hdr_t, hdr_match);
+    segments->seg_addr.pval = (void *) hdr_match;
+
+    /* find the communicator with this extended CID */
+    comm = ompi_comm_lookup_cid (hdr->hdr_cid.hdr_cid);
+    if (OPAL_UNLIKELY(NULL == comm)) {
+        if (segments->seg_len > 0) {
+            /* This is a special case. A message for a not yet existing
+             * communicator can happens. Instead of doing a matching we
+             * will temporarily add it the a pending queue in the PML.
+             * Later on, when the communicator is completely instantiated,
+             * this pending queue will be searched and all matching fragments
+             * moved to the right communicator.
+             */
+            append_frag_to_list (&mca_pml_ob1.non_existing_communicator_pending,
+                                 btl, (const mca_pml_ob1_match_hdr_t *)hdr, des->des_segments, 
+                                 num_segments, NULL);
+        }
+
+        /* nothing more to do */
+        return;
+    }
+
+    mca_pml_ob1_handle_cid (comm, hdr->hdr_cid.hdr_src, &hdr->hdr_cid);
+    hdr_match->hdr_ctx = comm->c_index;
+
+    if (segments->seg_len == 0) {
+        /* just a response */
+        return;
+    }
+
+    mca_pml_ob1_recv_frag_match (btl, hdr_match, segments, des->des_segment_count,
+                                 hdr_match->hdr_common.hdr_type);
+}

@@ -7,7 +7,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2015-2021 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
-# Copyright (c) 2015-2021 IBM Corporation.  All rights reserved.
+# Copyright (c) 2015-2022 IBM Corporation.  All rights reserved.
 # Copyright (c) 2020      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 #
@@ -76,7 +76,7 @@ my $ompi_libtoolize_search = "libtoolize;glibtoolize";
 
 # version of packages we ship as tarballs
 my $libevent_version="2.1.12-stable";
-my $hwloc_version="2.7.0";
+my $hwloc_version="2.7.1";
 
 # One-time setup
 my $username;
@@ -1275,7 +1275,7 @@ $dnl_line\n\n";
 # Verify that we're in the OMPI root directorty by checking for a token file.
 
 my_die "Not at the root directory of an OMPI source tree"
-    if (! -f "config/opal_try_assemble.m4");
+    if (! -f "config/opal_mca.m4");
 
 my_die "autogen.pl has been invoked in the source tree of an Open MPI distribution tarball; aborting...
 You likely do not need to invoke \"autogen.pl\" -- you can probably run \"configure\" directly.
@@ -1308,7 +1308,10 @@ my @disabled_3rdparty_packages = split(/,/, $no_3rdparty_arg);
 if ($no_prrte_arg) {
     push(@disabled_3rdparty_packages, "prrte");
 }
-
+# Alias: 'openpmix' -> 'pmix'
+if (list_contains("openpmix", @disabled_3rdparty_packages)) {
+    push(@disabled_3rdparty_packages, "pmix");
+}
 
 # Make sure we got a submodule-full clone.  If not, abort and let a
 # human figure it out.

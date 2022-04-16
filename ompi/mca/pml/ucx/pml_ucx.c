@@ -7,6 +7,8 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018 IBM Corporation. All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+ *                         All Rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +26,7 @@
 #include "ompi/mca/pml/base/pml_base_bsend.h"
 #include "opal/mca/common/ucx/common_ucx.h"
 #if OPAL_CUDA_SUPPORT
-#include "opal/mca/common/cuda/common_cuda.h"
+#include "opal/cuda/common_cuda.h"
 #endif /* OPAL_CUDA_SUPPORT */
 #include "pml_ucx_request.h"
 
@@ -35,18 +37,18 @@
     PML_UCX_VERBOSE(8, _msg " buf %p count %zu type '%s' dst %d tag %d mode %s comm %d '%s'", \
                     __VA_ARGS__, \
                     (_buf), (_count), (_datatype)->name, (_dst), (_tag), \
-                    mca_pml_ucx_send_mode_name(_mode), (_comm)->c_contextid, \
+                    mca_pml_ucx_send_mode_name(_mode), (_comm)->c_index, \
                     (_comm)->c_name);
 
 #define PML_UCX_TRACE_RECV(_msg, _buf, _count, _datatype, _src, _tag, _comm, ...) \
     PML_UCX_VERBOSE(8, _msg " buf %p count %zu type '%s' src %d tag %d comm %d '%s'", \
                     __VA_ARGS__, \
                     (_buf), (_count), (_datatype)->name, (_src), (_tag), \
-                    (_comm)->c_contextid, (_comm)->c_name);
+                    (_comm)->c_index, (_comm)->c_name);
 
 #define PML_UCX_TRACE_PROBE(_msg, _src, _tag, _comm) \
     PML_UCX_VERBOSE(8, _msg " src %d tag %d comm %d '%s'", \
-                    _src, (_tag), (_comm)->c_contextid, (_comm)->c_name);
+                    _src, (_tag), (_comm)->c_index, (_comm)->c_name);
 
 #define PML_UCX_TRACE_MRECV(_msg, _buf, _count, _datatype, _message) \
     PML_UCX_VERBOSE(8, _msg " buf %p count %zu type '%s' msg *%p=%p (%p)", \
@@ -496,8 +498,7 @@ int mca_pml_ucx_enable(bool enable)
     int ret;
 
     /* Create a key for adding custom attributes to datatypes */
-    copy_fn.attr_datatype_copy_fn  =
-                    (MPI_Type_internal_copy_attr_function)MPI_TYPE_NULL_COPY_FN;
+    copy_fn.attr_datatype_copy_fn  = MPI_TYPE_NULL_COPY_FN;
     del_fn.attr_datatype_delete_fn = mca_pml_ucx_datatype_attr_del_fn;
     ret = ompi_attr_create_keyval(TYPE_ATTR, copy_fn, del_fn,
                                   &ompi_pml_ucx.datatype_attr_keyval, NULL, 0,
