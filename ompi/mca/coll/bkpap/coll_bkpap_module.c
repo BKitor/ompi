@@ -84,8 +84,14 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 		module->local_pbuffs.rma.dbell_h = NULL;
 		module->local_pbuffs.rma.dbell_attrs.address = NULL;
 	}
-	else if(BKPAP_DATAPLANE_TAG == mca_coll_bkpap_component.dataplane_type){
-		free(module->local_pbuffs.tag.buff_arr);
+	else if (BKPAP_DATAPLANE_TAG == mca_coll_bkpap_component.dataplane_type) {
+		if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
+			|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type) {
+				cudaFree(module->local_pbuffs.tag.buff_arr);
+		}
+		else {
+			free(module->local_pbuffs.tag.buff_arr);
+		}
 		module->local_pbuffs.tag.buff_arr = NULL;
 	}
 

@@ -3,7 +3,7 @@
 #include "ompi/mca/coll/base/coll_base_functions.h"
 #include "ompi/op/op.h"
 
-#include "opal/mca/common/cuda/common_cuda.h"
+#include "opal/cuda/common_cuda.h"
 
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include <cuda.h>
@@ -336,7 +336,9 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
 
 #if OPAL_ENABLE_DEBUG
         int rbuf_is_cuda = opal_cuda_check_one_buf(rbuf, NULL);
-        int pbuf_is_cuda = opal_cuda_check_one_buf(bkpap_module->local_pbuffs.rma.postbuf_attrs.address, NULL);
+		void *chk_pbuf = (BKPAP_DATAPLANE_RMA == mca_coll_bkpap_component.dataplane_type) ?
+                    bkpap_module->local_pbuffs.rma.postbuf_attrs.address : bkpap_module->local_pbuffs.tag.buff_arr;
+        int pbuf_is_cuda = opal_cuda_check_one_buf(chk_pbuf, NULL);
         char offsets_str[64] = { '\0' };
         _bk_fill_array_str_ld(
             bkpap_module->remote_syncstructure->ss_counter_len, bkpap_module->remote_syncstructure->ss_arrival_arr_offsets, 64, offsets_str);
