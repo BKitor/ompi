@@ -37,7 +37,6 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
 };
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_threads) {
-    int ret;
 
     // TODO: this isn't the place to do this, it's bad form to do allocations in init_query
     // a proper solution would involve ref-counters and construction/destruction with modules

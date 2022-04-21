@@ -4,7 +4,7 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/pml/pml.h"
 
-
+// this is ripped from coll_base_reduce.c, and bk_gpu_op_reduce() as replaced ompi_reduce_local() 
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count,
 	ompi_datatype_t* datatype, ompi_op_t* op,
 	int root, ompi_communicator_t* comm,
@@ -323,12 +323,12 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf,
 	int count, ompi_datatype_t* datatype,
 	ompi_op_t* op, int root,
 	ompi_communicator_t* comm,
-	mca_coll_base_module_t* module,
+	mca_coll_bkpap_module_t* bkpap_module,
 	uint32_t segsize,
 	int max_outstanding_reqs) {
 	int segcount = count;
 	size_t typelng;
-	mca_coll_base_module_t* base_module = module;
+	mca_coll_base_module_t* base_module = &(bkpap_module->super);
 	mca_coll_base_comm_t* data = base_module->base_data;
 	
 	if(OPAL_UNLIKELY(1 == ompi_comm_size(comm)))return OMPI_SUCCESS;
@@ -346,7 +346,7 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf,
 	COLL_BASE_COMPUTED_SEGCOUNT(segsize, typelng, segcount);
 
 	return mca_coll_bkpap_reduce_generic(MPI_IN_PLACE, buf, count, datatype,
-		op, root, comm, module,
+		op, root, comm, base_module,
 		data->cached_in_order_bmtree,
 		segcount, max_outstanding_reqs);
 }

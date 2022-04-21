@@ -6,7 +6,7 @@
 #include <cuda_runtime.h>
 #pragma GCC diagnostic pop
 
-static void _bk_recv_cb(void *request, ucs_status_t status, const ucp_tag_recv_info_t* tag_info, void* user_data){
+static void _bk_recv_cb(void* request, ucs_status_t status, const ucp_tag_recv_info_t* tag_info, void* user_data) {
 	mca_coll_bkpap_req_t* req = request;
 	req->ucs_status = status;
 	req->complete = 1;
@@ -19,8 +19,7 @@ int mca_coll_bkpap_tag_wireup(int num_bufs, mca_coll_bkpap_module_t* module, str
 	void* mapped_postbuf = NULL;
 	size_t mapped_postbuf_size = mca_coll_bkpap_component.postbuff_size * num_bufs;
 
-	switch (mca_coll_bkpap_component.bk_postbuf_memory_type)
-	{
+	switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
 	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
 		ret = posix_memalign(&mapped_postbuf, sizeof(int64_t), mapped_postbuf_size);
 		if (0 != ret || NULL == mapped_postbuf) {
@@ -101,7 +100,7 @@ int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* 
 	ucs_status_ptr_t status_ptr = NULL;
 	ucs_status_t  status = UCS_OK;
 	size_t dtype_size = 0, buf_size = 0;
-	void* ucp_recv_buf = bkpap_module->local_pbuffs.tag.buff_arr;
+	void* ucp_recv_buf = NULL;
 
 	ompi_datatype_type_size(dtype, &dtype_size);
 	buf_size = dtype_size * (ptrdiff_t)count;
@@ -109,7 +108,6 @@ int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* 
 	for (int i = 0; i < num_buffers; i++) {
 		ucp_request_param_t req_params = {
 			.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK
-							| UCP_OP_ATTR_FLAG_NO_IMM_CMPL
 							| UCP_OP_ATTR_FIELD_MEMORY_TYPE
 							| UCP_OP_ATTR_FIELD_USER_DATA,
 			.memory_type = mca_coll_bkpap_component.ucs_postbuf_memory_type,
@@ -117,14 +115,18 @@ int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* 
 			.user_data = NULL
 		};
 
-		status_ptr = ucp_tag_recv_nbx(mca_coll_bkpap_component.ucp_worker, ucp_recv_buf, buf_size, i, 0, &req_params);
+		ptrdiff_t pbuf_recv_offset = i * mca_coll_bkpap_component.postbuff_size;
+		ucp_recv_buf = ((int8_t*)bkpap_module->local_pbuffs.tag.buff_arr) + pbuf_recv_offset;
+		ucp_tag_t ucp_tag = i;
+
+		status_ptr = ucp_tag_recv_nbx(mca_coll_bkpap_component.ucp_worker, ucp_recv_buf, buf_size, ucp_tag, 0, &req_params);
 		if (OPAL_UNLIKELY(UCS_PTR_IS_ERR(status_ptr))) {
 			status = UCS_PTR_STATUS(status_ptr);
 			BKPAP_ERROR("rank: %d, i: %d, recv error %d(%s)", ompi_comm_rank(comm), i, status, ucs_status_string(status));
 			return OMPI_ERROR;
 		}
 		status = _bk_poll_completion(status_ptr);
-		if(OPAL_UNLIKELY(UCS_OK != status)){
+		if (OPAL_UNLIKELY(UCS_OK != status)) {
 			BKPAP_ERROR("poll completion failed");
 			return OMPI_ERROR;
 		}

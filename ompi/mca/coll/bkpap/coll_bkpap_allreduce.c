@@ -10,6 +10,7 @@
 #include <cuda_runtime.h>
 #pragma GCC diagnostic pop
 
+// TODO: should be removed and replaced with error checking in coll_bkpap.h
 #define _BK_CHK_RET(_ret, _msg) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR(_msg); return _ret;}
 
 // returns error if runs out of space
@@ -106,7 +107,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, intra_comm->c_coll->coll_reduce_module, 0, 0);
+        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");
@@ -123,7 +124,8 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             inter_rank, count, seg_size, type_size, num_segments, inter_size, intra_size);
         ompi_request_t* inter_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* intra_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
-        ompi_request_t* tmp_bcast_wait_arr[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* ss_reset_barrier_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* tmp_bcast_wait_arr[3] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL };
 
         uint8_t* seg_buf = rbuf;
         int bcast_count = seg_count, prev_bcast_count = 0;
@@ -143,7 +145,8 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             // Wait Inter and Intra ibcasts
             tmp_bcast_wait_arr[0] = (intra_bcast_reqs[phase_selector]);
             tmp_bcast_wait_arr[1] = (inter_bcast_reqs[phase_selector]);
-            bk_request_wait_all(tmp_bcast_wait_arr, 2);
+            tmp_bcast_wait_arr[2] = (ss_reset_barrier_reqs[phase_selector]);
+            bk_request_wait_all(tmp_bcast_wait_arr, 3);
 
             BKPAP_PROFILE("leave_new_seg_wait", inter_rank);
 
@@ -169,7 +172,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
                     _BK_CHK_RET(ret, "arrive at inter failed");
                     arrival_pos += 1;
 
-                    BKPAP_OUTPUT("ARRIVED_AT_SS: seg_index: %d, rank: %d, arrival_pos: %ld", seg_index, inter_rank, arrival_pos);
+                    BKPAP_OUTPUT("ARRIVED_AT_SS: seg_index: %d, rank: %d, arrival_pos: %ld, inter_bcast_root: %d", seg_index, inter_rank, arrival_pos, inter_bcast_root);
                     while (-1 == inter_bcast_root) {
                         int arrival_round_offset = 0;
                         ret = mca_coll_bkpap_get_rank_of_arrival(0, arrival_round_offset, remote_ss_tmp, bkpap_module, &inter_bcast_root);
@@ -224,9 +227,10 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             }
 
             BKPAP_OUTPUT("STARTING_INTER_IBCAST: seg_index: %d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
+            inter_comm->c_coll->coll_ibarrier(inter_comm, &(ss_reset_barrier_reqs[phase_selector]), inter_comm->c_coll->coll_ibarrier_module);
             inter_comm->c_coll->coll_ibcast(
                 seg_buf, bcast_count, dtype, inter_bcast_root, inter_comm,
-                &(inter_bcast_reqs[seg_index % 2]), inter_comm->c_coll->coll_ibcast_module);
+                &(inter_bcast_reqs[phase_selector]), inter_comm->c_coll->coll_ibcast_module);
             inter_bcast_root = -1;
 
             prev_bcast_count = bcast_count;
@@ -316,7 +320,7 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, intra_comm->c_coll->coll_reduce_module, 0, 0);
+        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");

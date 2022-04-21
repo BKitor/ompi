@@ -139,6 +139,7 @@ mca_coll_base_module_t* mca_coll_bkpap_comm_query(struct ompi_communicator_t* co
 
 int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_communicator_t* comm) {
 	mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
+	mca_coll_base_comm_t *data = NULL;
 
 	// check for allgather/allgaterv, needed for setup when echangaing ucp data
 	if (NULL == comm->c_coll->coll_allgather_module || NULL == comm->c_coll->coll_allgatherv_module) {
@@ -160,8 +161,26 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 		bkpap_module->fallback_allreduce = comm->c_coll->coll_allreduce;
 		OBJ_RETAIN(bkpap_module->fallback_allreduce_module);
 	}
+	
+	if (NULL != bkpap_module->super.base_data){
+		data = OBJ_NEW(mca_coll_base_comm_t);
+		BKPAP_CHK_MALLOC(data, bkpap_abort_module_enable);
+		data->cached_ntree = NULL;
+		data->cached_bintree = NULL;
+		data->cached_bmtree = NULL;
+		data->cached_in_order_bmtree = NULL;
+		data->cached_kmtree = NULL;
+		data->cached_chain = NULL;
+		data->cached_pipeline = NULL;
+		data->cached_in_order_bintree = NULL;
+		bkpap_module->super.base_data = data;
+	}
+
 
 	return OMPI_SUCCESS;
+
+bkpap_abort_module_enable:
+	return OMPI_ERROR;
 }
 
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
