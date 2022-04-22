@@ -39,13 +39,13 @@ lbl_dict = {
 
 match_dict = {}
 with open(f_name) as f:
-	for i,l in enumerate(f):
+	for l in f:
 		m = prof_inst_c.match(l)
 		if m is None:
 			continue
-		m_time = float(m.group(1))
-		m_rank = m.group(2)
-		m_lbl = m.group(3)
+		m_time = float(m.group('time'))
+		m_rank = m.group('rank')
+		m_lbl = m.group('lbl')
 		
 		if m_rank not in match_dict:
 			match_dict[m_rank] = [(0.0, "init")]
