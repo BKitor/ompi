@@ -162,7 +162,7 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 		OBJ_RETAIN(bkpap_module->fallback_allreduce_module);
 	}
 	
-	if (NULL != bkpap_module->super.base_data){
+	if (NULL == bkpap_module->super.base_data){
 		data = OBJ_NEW(mca_coll_base_comm_t);
 		BKPAP_CHK_MALLOC(data, bkpap_abort_module_enable);
 		data->cached_ntree = NULL;

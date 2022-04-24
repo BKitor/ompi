@@ -107,6 +107,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+        BKPAP_OUTPUT("REDUCE DBG comm: [%p], base_module: [%p], base_data: [%p], root: %d", (void*) intra_comm, (void*) bkpap_module, (void*) bkpap_module->super.base_data, 0);
         ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
         break;
     default:
@@ -188,7 +189,6 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
                     // TODO: this num_reduction logic only works for (k == 4) and (wsize is a power of 2),
                     // TODO: might want to fix at some point
                     int num_reductions = (sync_mask > inter_size) ? 1 : k - 1;
-                    BKPAP_OUTPUT("DBG sync_mask: %d, k: %d, inter_size: %d, num_reductions: %d", sync_mask, k, inter_size, num_reductions);
                     BKPAP_OUTPUT("START_PBUF_REDUCE: seg_index: %d, rank: %d, num_reductions: %d, count: %d", seg_index, inter_rank, num_reductions, bcast_count);
                     BKPAP_PROFILE("start_postbuf_reduce", inter_rank);
                     ret = mca_coll_bkpap_reduce_dataplane(seg_buf, dtype, bcast_count, op, num_reductions, inter_comm, &bkpap_module->super);
