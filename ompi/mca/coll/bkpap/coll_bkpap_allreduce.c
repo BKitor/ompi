@@ -107,8 +107,8 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        BKPAP_OUTPUT("REDUCE DBG comm: [%p], base_module: [%p], base_data: [%p], root: %d", (void*) intra_comm, (void*) bkpap_module, (void*) bkpap_module->super.base_data, 0);
-        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
+        // BKPAP_OUTPUT("REDUCE DBG comm: [%p], base_module: [%p], base_data: [%p], root: %d", (void*) intra_comm, (void*) bkpap_module, (void*) bkpap_module->super.base_data, 0);
+        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");
@@ -144,9 +144,9 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             BKPAP_OUTPUT("START_SEG: seg_index: %d, num_segments: %d, rank: %d, phase_selector: %d", seg_index, num_segments, inter_rank, phase_selector);
 
             // Wait Inter and Intra ibcasts
-            tmp_bcast_wait_arr[0] = (intra_bcast_reqs[phase_selector]);
-            tmp_bcast_wait_arr[1] = (inter_bcast_reqs[phase_selector]);
-            tmp_bcast_wait_arr[2] = (ss_reset_barrier_reqs[phase_selector]);
+            tmp_bcast_wait_arr[0] = intra_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[1] = inter_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
             bk_request_wait_all(tmp_bcast_wait_arr, 3);
 
             BKPAP_PROFILE("leave_new_seg_wait", inter_rank);
@@ -250,7 +250,8 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
             tmp_bcast_wait_arr[0] = inter_bcast_reqs[phase_selector];
             tmp_bcast_wait_arr[1] = intra_bcast_reqs[phase_selector];
-            bk_request_wait_all(tmp_bcast_wait_arr, 2);
+            tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
+            bk_request_wait_all(tmp_bcast_wait_arr, 3);
             BKPAP_PROFILE("leave_cleanup_wait", inter_rank);
             BKPAP_OUTPUT("FINISHED_CLEANUP_WAIT: rank: %d, cleanup_idx: %d", inter_rank, cleanup_index);
 
@@ -320,7 +321,7 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
+        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");

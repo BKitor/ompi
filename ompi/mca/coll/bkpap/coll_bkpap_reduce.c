@@ -319,7 +319,7 @@ error_hndl:  /* error handler */
 	return ret;
 }
 
-int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf,
+int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recvbuf,
 	int count, ompi_datatype_t* datatype,
 	ompi_op_t* op, int root,
 	ompi_communicator_t* comm,
@@ -345,7 +345,7 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf,
 	ompi_datatype_type_size(datatype, &typelng);
 	COLL_BASE_COMPUTED_SEGCOUNT(segsize, typelng, segcount);
 
-	return mca_coll_bkpap_reduce_generic(MPI_IN_PLACE, buf, count, datatype,
+	return mca_coll_bkpap_reduce_generic(sendbuf, recvbuf, count, datatype,
 		op, root, comm, base_module,
 		data->cached_in_order_bmtree,
 		segcount, max_outstanding_reqs);
