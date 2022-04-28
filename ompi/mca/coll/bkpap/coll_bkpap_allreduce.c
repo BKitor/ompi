@@ -90,7 +90,7 @@ static inline int _bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
         BKPAP_OUTPUT("REDUCE DBG comm: [%p], base_module: [%p], base_data: [%p], root: %d", (void*)intra_comm, (void*)bkpap_module, (void*)bkpap_module->super.base_data, 0);
-        return mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
+        return mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");
@@ -121,20 +121,17 @@ static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, v
 
     BKPAP_OUTPUT("KTREE_FULLPIPE_ARRIVE, rank: %d, count: %d, seg_size: %ld, dtype_size: %ld, num_segments:%d, seg_count: %d, inter_size: %d, intra_size: %d",
         inter_rank, count, seg_size, type_size, num_segments, seg_count, inter_size, intra_size);
-    if (is_inter) {
+    if (is_inter) { // do PAP-Aware stuff
         BKPAP_PROFILE("arrive_at_fullpipe", inter_rank);
-        ompi_request_t* intra_reduce_req[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* inter_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* intra_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* ss_reset_barrier_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
-        ompi_request_t* tmp_bcast_wait_arr[4] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* tmp_bcast_wait_arr[3] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL };
 
         uint8_t* seg_buf = rbuf;
-        int seg_iter_count = seg_count, prev_seg_iter_count = 0, intra_red_count = seg_count;
+        int seg_iter_count = seg_count, prev_seg_iter_count = 0;
         int inter_bcast_root = -1;
 
-        BKPAP_OUTPUT("INITIAL_INTRA_REDUCE: rank: %d, count: %d, red_buf: [0x%p]", inter_rank, intra_red_count, rbuf);
-        intra_comm->c_coll->coll_ireduce(MPI_IN_PLACE, rbuf, intra_red_count, dtype, op, 0, intra_comm, &(intra_reduce_req[0]), intra_comm->c_coll->coll_ireduce_module);
         for (int seg_index = 0; seg_index < num_segments; seg_index++) {
             BKPAP_PROFILE("start_new_segment", inter_rank);
             int64_t arrival_pos = -1;
@@ -144,15 +141,15 @@ static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, v
                 seg_iter_count = count - (seg_index * seg_count);
             }
 
-            BKPAP_OUTPUT("START_SEG: seg_index: %d, num_segments: %d, rank: %d, phase_selector: %d inv(%d) intra_red_req: [0x%p] (req null: [0x%p])",
-                seg_index, num_segments, inter_rank, phase_selector, (phase_selector^1), (void*)intra_reduce_req[phase_selector], (void*)MPI_REQUEST_NULL);
+            BKPAP_OUTPUT("START_SEG: seg_index: %d, seg_iter_count: %d, num_segments: %d, rank: %d, phase_selector: %d inv(%d)",
+                seg_index, seg_iter_count, num_segments, inter_rank, phase_selector, (phase_selector ^ 1));
 
             // Wait Inter and Intra ibcasts
             tmp_bcast_wait_arr[0] = intra_bcast_reqs[phase_selector];
             tmp_bcast_wait_arr[1] = inter_bcast_reqs[phase_selector];
             tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
-            tmp_bcast_wait_arr[3] = intra_reduce_req[phase_selector];
-            bk_request_wait_all(tmp_bcast_wait_arr, 4);
+            ret = bk_request_wait_all(tmp_bcast_wait_arr, 3);
+            _BK_CHK_RET(ret, "leader bk_request_wait_all failed");
 
             BKPAP_PROFILE("leave_new_seg_wait", inter_rank);
 
@@ -167,18 +164,10 @@ static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, v
                     &intra_bcast_reqs[phase_selector], intra_comm->c_coll->coll_ibcast_module);
             }
 
-            if (seg_index == (num_segments - 1)) { // no intra reduce
-                intra_reduce_req[phase_selector ^ 1] = (ompi_request_t*)OMPI_REQUEST_NULL;
-            }
-            else {
-                if (seg_index == (num_segments - 2)) { // launch last intra reduce
-                    intra_red_count = count - ((num_segments - 1) * seg_count);
-                }
-                void* red_buf = seg_buf + real_seg_size;
-                BKPAP_OUTPUT("STARTING_INTRA_REDUCE: seg_index: %d, rank: %d, count: %d, red_buf: [0x%p]", seg_index, inter_rank, intra_red_count, (void*)red_buf);
-                intra_comm->c_coll->coll_ireduce(MPI_IN_PLACE, red_buf, intra_red_count, dtype, op, 0, intra_comm,
-                    &(intra_reduce_req[(phase_selector ^ 1)]), intra_comm->c_coll->coll_ireduce_module);
-            }
+            BKPAP_OUTPUT("INTRA_REDUCE_SEGMENT: seg_index: %d, rank: %d, count: %d, red_buf: [0x%p]", seg_index, inter_rank, seg_iter_count, (void*)seg_buf);
+            ret = _bk_intra_reduce(seg_buf, seg_iter_count, dtype, op, intra_comm, bkpap_module);
+            _BK_CHK_RET(ret, "intra reduce failed");
+            BKPAP_PROFILE("finish_intra_reduce_seg", inter_rank);
 
             int sync_mask = 1;
             int tree_height = _bk_log_k(k, ompi_comm_size(inter_comm));
@@ -268,7 +257,9 @@ static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, v
 
             tmp_bcast_wait_arr[0] = inter_bcast_reqs[phase_selector];
             tmp_bcast_wait_arr[1] = intra_bcast_reqs[phase_selector];
-            bk_request_wait_all(tmp_bcast_wait_arr, 2);
+            tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
+            ret = bk_request_wait_all(tmp_bcast_wait_arr, 3);
+            _BK_CHK_RET(ret, "leader bk_request_wait_all failed");
             BKPAP_PROFILE("leave_cleanup_wait", inter_rank);
             BKPAP_OUTPUT("FINISHED_CLEANUP_WAIT: rank: %d, cleanup_idx: %d", inter_rank, cleanup_index);
 
@@ -284,22 +275,19 @@ static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, v
             seg_buf += real_seg_size;
         }
 
-        bk_request_wait_all(intra_bcast_reqs, 2);
+        ret = bk_request_wait_all(intra_bcast_reqs, 2);
+        _BK_CHK_RET(ret, "leader bk_request_wait_all failed");
         BKPAP_PROFILE("final_cleanup_wait", inter_rank);
         BKPAP_OUTPUT("CLEANUP_DONE: rank: %d", inter_rank);
     }
-    else {
-        // ompi_request_t* red_req = (ompi_request_t*)OMPI_REQUEST_NULL, *bc_req = (ompi_request_t*)OMPI_REQUEST_NULL;
+    else { // is-intra, do reduce and bcast
         int  red_count = seg_count, bc_count = seg_count;
         uint8_t* red_buf = rbuf, * bc_buf = rbuf;
-        ompi_request_t* req_arr[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* bc_req = MPI_REQUEST_NULL;
 
         // start first pipeline segment
-        intra_comm->c_coll->coll_ireduce(
-            red_buf, NULL, red_count, dtype, op, 0, intra_comm, &req_arr[0],
-            intra_comm->c_coll->coll_ireduce_module);
-        ompi_request_wait(&req_arr[0], MPI_STATUS_IGNORE);
-
+        ret = _bk_intra_reduce(red_buf, red_count, dtype, op, intra_comm, bkpap_module);
+        _BK_CHK_RET(ret, "non-leader intra-node reduce failed");
         red_buf += real_seg_size;
 
         for (int seg_index = 1; seg_index < num_segments; seg_index++) {
@@ -307,26 +295,29 @@ static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, v
                 red_count = count - (seg_index * seg_count);
             }
             BKPAP_OUTPUT("IS INTRA, rank: %d, seg_index: %d, num_segments: %d, red_count: %d, bc_count: %d, red_buf: [0x%p], bc_buf: [0x%p]",
-                intra_rank, seg_index, num_segments, red_count, bc_count, (void*) red_buf, (void*) bc_buf);
+                intra_rank, seg_index, num_segments, red_count, bc_count, (void*)red_buf, (void*)bc_buf);
 
-            intra_comm->c_coll->coll_ireduce(
-                red_buf, NULL, red_count, dtype, op, 0, intra_comm, &req_arr[0],
-                intra_comm->c_coll->coll_ireduce_module);
-            intra_comm->c_coll->coll_ibcast(
-                bc_buf, bc_count, dtype, 0, intra_comm, &req_arr[1],
+            ret = intra_comm->c_coll->coll_ibcast(
+                bc_buf, bc_count, dtype, 0, intra_comm, &bc_req,
                 intra_comm->c_coll->coll_ibcast_module);
+            _BK_CHK_RET(ret, "non-leader intra-node ibcast failed");
+            ret = _bk_intra_reduce(red_buf, red_count, dtype, op, intra_comm, bkpap_module);
+            _BK_CHK_RET(ret, "non-leader intra-node reduce failed");
 
-            ompi_request_wait_all(2, req_arr, MPI_STATUSES_IGNORE);
+            ret = ompi_request_wait(&bc_req, MPI_STATUS_IGNORE);
+            _BK_CHK_RET(ret, "non-leader ompi_request_wait_all failed");
             red_buf += real_seg_size;
             bc_buf += real_seg_size;
         }
 
         // cleanup last segment
         bc_count = count - ((num_segments - 1) * seg_count);
-        intra_comm->c_coll->coll_ibcast(
-            bc_buf, bc_count, dtype, 0, intra_comm, &req_arr[1],
+        ret = intra_comm->c_coll->coll_ibcast(
+            bc_buf, bc_count, dtype, 0, intra_comm, &bc_req,
             intra_comm->c_coll->coll_ibcast_module);
-        ompi_request_wait(&req_arr[1], MPI_STATUS_IGNORE);
+        _BK_CHK_RET(ret, "non-leader intra-node ibcast failed");
+        ret = ompi_request_wait(&bc_req, MPI_STATUS_IGNORE);
+        _BK_CHK_RET(ret, "non-leader ompi_request_wait_all failed");
     }
 
 
