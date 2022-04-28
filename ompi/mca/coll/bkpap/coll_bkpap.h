@@ -196,7 +196,7 @@ int mca_coll_bkpap_tag_wireup(int num_bufs, mca_coll_bkpap_module_t* module, str
 int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
 int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_base_module_t* module);
 
-int mca_coll_bkpap_reduce_intra_inplace_binomial(void* buf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module, uint32_t segsize, int max_outstanding_reqs);
+int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recvbuf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module, uint32_t segsize, int max_outstanding_reqs);
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
 
 END_C_DECLS

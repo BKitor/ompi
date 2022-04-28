@@ -494,7 +494,8 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
             tmp_bcast_wait_arr[0] = inter_bcast_reqs[phase_selector];
             tmp_bcast_wait_arr[1] = intra_bcast_reqs[phase_selector];
-            bk_request_wait_all(tmp_bcast_wait_arr, 2);
+            tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
+            bk_request_wait_all(tmp_bcast_wait_arr, 3);
             BKPAP_PROFILE("leave_cleanup_wait", inter_rank);
             BKPAP_OUTPUT("FINISHED_CLEANUP_WAIT: rank: %d, cleanup_idx: %d", inter_rank, cleanup_index);
 
