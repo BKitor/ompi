@@ -268,6 +268,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	int64_t* arrival_arr_offsets_tmp = NULL;
 	switch (alg) {
 	case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
+	case BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE:
 		num_syncstructures = 2;
 		counter_arr_len = 1;
 		arrival_arr_len = ompi_comm_size(comm);

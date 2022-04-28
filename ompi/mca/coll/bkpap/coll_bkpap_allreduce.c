@@ -74,6 +74,267 @@ static inline int bk_request_wait_all(ompi_request_t** request_arr, int req_arr_
     return OMPI_SUCCESS;
 }
 
+static inline int _bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, mca_coll_bkpap_module_t* bkpap_module) {
+    int intra_rank = ompi_comm_rank(intra_comm);
+
+    void* intra_reduce_sbuf = (0 == intra_rank) ? MPI_IN_PLACE : rbuf;
+    void* intra_reduce_rbuf = (0 == intra_rank) ? rbuf : NULL;
+
+    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
+    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+        return intra_comm->c_coll->coll_reduce(
+            intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0,
+            intra_comm,
+            intra_comm->c_coll->coll_reduce_module);
+        break;
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+        BKPAP_OUTPUT("REDUCE DBG comm: [%p], base_module: [%p], base_data: [%p], root: %d", (void*)intra_comm, (void*)bkpap_module, (void*)bkpap_module->super.base_data, 0);
+        return mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
+        break;
+    default:
+        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
+        return OMPI_ERROR;
+        break;
+    }
+}
+
+static inline int _bk_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rbuf, int count,
+    struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size,
+    struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm,
+    mca_coll_bkpap_module_t* bkpap_module) {
+    int ret = OMPI_SUCCESS;
+    int inter_rank = ompi_comm_rank(inter_comm), inter_size = ompi_comm_size(inter_comm);
+    int intra_rank = ompi_comm_rank(intra_comm), intra_size = ompi_comm_size(intra_comm);
+    int k = mca_coll_bkpap_component.allreduce_k_value;
+    int is_inter = (0 == intra_rank);
+
+    // if(seg_size >  type_size * seg_count) seg_count = count;
+    int seg_count = count;
+    size_t type_size;
+    ptrdiff_t type_extent, type_lb;
+    ompi_datatype_get_extent(dtype, &type_lb, &type_extent);
+    ompi_datatype_type_size(dtype, &type_size);
+    COLL_BASE_COMPUTED_SEGCOUNT(seg_size, type_size, seg_count);
+    int num_segments = (count + seg_count - 1) / seg_count;
+    size_t real_seg_size = (ptrdiff_t)seg_count * type_extent;
+
+    BKPAP_OUTPUT("KTREE_FULLPIPE_ARRIVE, rank: %d, count: %d, seg_size: %ld, dtype_size: %ld, num_segments:%d, seg_count: %d, inter_size: %d, intra_size: %d",
+        inter_rank, count, seg_size, type_size, num_segments, seg_count, inter_size, intra_size);
+    if (is_inter) {
+        BKPAP_PROFILE("arrive_at_fullpipe", inter_rank);
+        ompi_request_t* intra_reduce_req[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* inter_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* intra_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* ss_reset_barrier_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+        ompi_request_t* tmp_bcast_wait_arr[4] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+
+        uint8_t* seg_buf = rbuf;
+        int seg_iter_count = seg_count, prev_seg_iter_count = 0, intra_red_count = seg_count;
+        int inter_bcast_root = -1;
+
+        BKPAP_OUTPUT("INITIAL_INTRA_REDUCE: rank: %d, count: %d, red_buf: [0x%p]", inter_rank, intra_red_count, rbuf);
+        intra_comm->c_coll->coll_ireduce(MPI_IN_PLACE, rbuf, intra_red_count, dtype, op, 0, intra_comm, &(intra_reduce_req[0]), intra_comm->c_coll->coll_ireduce_module);
+        for (int seg_index = 0; seg_index < num_segments; seg_index++) {
+            BKPAP_PROFILE("start_new_segment", inter_rank);
+            int64_t arrival_pos = -1;
+            int phase_selector = (seg_index % 2);
+            mca_coll_bkpap_remote_syncstruct_t* remote_ss_tmp = &(bkpap_module->remote_syncstructure[phase_selector]);
+            if ((num_segments - 1) == seg_index) { // if last segment, and allignment doesn't line up with seg-count
+                seg_iter_count = count - (seg_index * seg_count);
+            }
+
+            BKPAP_OUTPUT("START_SEG: seg_index: %d, num_segments: %d, rank: %d, phase_selector: %d inv(%d) intra_red_req: [0x%p] (req null: [0x%p])",
+                seg_index, num_segments, inter_rank, phase_selector, (phase_selector^1), (void*)intra_reduce_req[phase_selector], (void*)MPI_REQUEST_NULL);
+
+            // Wait Inter and Intra ibcasts
+            tmp_bcast_wait_arr[0] = intra_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[1] = inter_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
+            tmp_bcast_wait_arr[3] = intra_reduce_req[phase_selector];
+            bk_request_wait_all(tmp_bcast_wait_arr, 4);
+
+            BKPAP_PROFILE("leave_new_seg_wait", inter_rank);
+
+            BKPAP_OUTPUT("LEAVE_WAIT_ALL: seg_index: %d, rank: %d, phase_selector: %d", seg_index, inter_rank, phase_selector);
+
+            if (seg_index > 1 && intra_size > 1) { // Launch Intra-bcast
+                uint8_t* intra_buf = rbuf;
+                intra_buf += (seg_index - 2) * real_seg_size;
+                BKPAP_OUTPUT("STARTING_INTRA_IBCAST: seg_index: %d, rank: %d, bc_buf: [0x%p]", seg_index, inter_rank, (void*)intra_buf);
+                intra_comm->c_coll->coll_ibcast(
+                    intra_buf, prev_seg_iter_count, dtype, 0, intra_comm,
+                    &intra_bcast_reqs[phase_selector], intra_comm->c_coll->coll_ibcast_module);
+            }
+
+            if (seg_index == (num_segments - 1)) { // no intra reduce
+                intra_reduce_req[phase_selector ^ 1] = (ompi_request_t*)OMPI_REQUEST_NULL;
+            }
+            else {
+                if (seg_index == (num_segments - 2)) { // launch last intra reduce
+                    intra_red_count = count - ((num_segments - 1) * seg_count);
+                }
+                void* red_buf = seg_buf + real_seg_size;
+                BKPAP_OUTPUT("STARTING_INTRA_REDUCE: seg_index: %d, rank: %d, count: %d, red_buf: [0x%p]", seg_index, inter_rank, intra_red_count, (void*)red_buf);
+                intra_comm->c_coll->coll_ireduce(MPI_IN_PLACE, red_buf, intra_red_count, dtype, op, 0, intra_comm,
+                    &(intra_reduce_req[(phase_selector ^ 1)]), intra_comm->c_coll->coll_ireduce_module);
+            }
+
+            int sync_mask = 1;
+            int tree_height = _bk_log_k(k, ompi_comm_size(inter_comm));
+            for (int sync_round = 0; sync_round < tree_height; sync_round++) { // pap-aware loop
+                BKPAP_PROFILE("starting_new_sync_round", inter_rank);
+                uint64_t counter_offset = 0;
+                size_t arrival_arr_offset = 0;
+                if (-1 == arrival_pos) {
+                    ret = mca_coll_bkpap_arrive_ss(inter_rank, counter_offset, arrival_arr_offset, remote_ss_tmp, bkpap_module, inter_comm, &arrival_pos);
+                    _BK_CHK_RET(ret, "arrive at inter failed");
+                    arrival_pos += 1;
+
+                    BKPAP_OUTPUT("ARRIVED_AT_SS: seg_index: %d, rank: %d, arrival_pos: %ld, inter_bcast_root: %d", seg_index, inter_rank, arrival_pos, inter_bcast_root);
+                    while (-1 == inter_bcast_root) {
+                        int arrival_round_offset = 0;
+                        ret = mca_coll_bkpap_get_rank_of_arrival(0, arrival_round_offset, remote_ss_tmp, bkpap_module, &inter_bcast_root);
+                        _BK_CHK_RET(ret, "get rank of arrival failed");
+                    }
+                    BKPAP_OUTPUT("GOT_TREE_ROOT: seg_index: %d, rank: %d, arrive: %ld, inter_bcast_root:%d ", seg_index, inter_rank, arrival_pos, inter_bcast_root);
+                    BKPAP_PROFILE("synced_at_ss", inter_rank);
+                }
+
+                sync_mask *= k;
+
+                if (0 == arrival_pos % sync_mask) { // if-parent reduce
+                    // TODO: this num_reduction logic only works for (k == 4) and (wsize is a power of 2),
+                    // TODO: might want to fix at some point
+                    int num_reductions = (sync_mask > inter_size) ? 1 : k - 1;
+                    BKPAP_OUTPUT("START_PBUF_REDUCE: seg_index: %d, rank: %d, num_reductions: %d, count: %d", seg_index, inter_rank, num_reductions, seg_iter_count);
+                    BKPAP_PROFILE("start_postbuf_reduce", inter_rank);
+                    ret = mca_coll_bkpap_reduce_dataplane(seg_buf, dtype, seg_iter_count, op, num_reductions, inter_comm, &bkpap_module->super);
+                    BKPAP_PROFILE("leave_postbuf_reduce", inter_rank);
+                    _BK_CHK_RET(ret, "reduce postbuf failed");
+                    BKPAP_OUTPUT("LEAVE_PBUF_REDUCE: seg_index: %d, rank: %d, sync_round: %d", seg_index, inter_rank, sync_round);
+                } // if-parent reduce
+                else { // else-child send parent
+                    // sending
+                    int send_rank = -1;
+                    int send_arrival_pos = arrival_pos - (arrival_pos % sync_mask);
+                    int arrival_round_offset = 0;
+                    BKPAP_OUTPUT("GET_PARENT: seg_index: %d, rank: %d, arrival: %ld, parent_arrival: %d, sync_mask: %d", seg_index, inter_rank, arrival_pos, send_arrival_pos, sync_mask);
+                    while (send_rank == -1) {
+                        ret = mca_coll_bkpap_get_rank_of_arrival(send_arrival_pos, arrival_round_offset, remote_ss_tmp, bkpap_module, &send_rank);
+                        _BK_CHK_RET(ret, "get rank of arrival faild");
+                    }
+                    BKPAP_PROFILE("got_parent_rank", inter_rank);
+
+                    int slot = ((arrival_pos / (sync_mask / k)) % k) - 1;
+
+                    BKPAP_OUTPUT("SEND_PARENT: seg_index: %d, rank: %d, arrival: %ld, send_rank: %d, send_arrival: %d, slot: %d, sync_mask: %d",
+                        seg_index, inter_rank, arrival_pos, send_rank, send_arrival_pos, slot, sync_mask);
+                    ret = mca_coll_bkpap_send_dataplane(seg_buf, dtype, seg_iter_count, send_rank, slot, inter_comm, &bkpap_module->super);
+                    _BK_CHK_RET(ret, "write parrent postuf failed");
+                    BKPAP_PROFILE("sent_parent_rank", inter_rank);
+                    break;
+                } // else-child send parent
+            } // pap-aware loop
+
+            if (inter_rank == inter_bcast_root) {
+                BKPAP_OUTPUT("RESET_SS: seg_index: %d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
+                ret = mca_coll_bkpap_reset_remote_ss(remote_ss_tmp, inter_comm, bkpap_module);
+                _BK_CHK_RET(ret, "reset_remote_ss failed");
+                BKPAP_PROFILE("reset_remote_ss", inter_rank);
+            }
+
+            BKPAP_OUTPUT("STARTING_INTER_IBCAST: seg_index: %d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
+            inter_comm->c_coll->coll_ibarrier(inter_comm, &(ss_reset_barrier_reqs[phase_selector]), inter_comm->c_coll->coll_ibarrier_module);
+            inter_comm->c_coll->coll_ibcast(
+                seg_buf, seg_iter_count, dtype, inter_bcast_root, inter_comm,
+                &(inter_bcast_reqs[phase_selector]), inter_comm->c_coll->coll_ibcast_module);
+            inter_bcast_root = -1;
+
+            prev_seg_iter_count = seg_iter_count;
+            seg_buf += real_seg_size;
+        }
+        BKPAP_PROFILE("leave_main_loop", inter_rank);
+
+        BKPAP_OUTPUT("STARTING_CLEANUP: rank: %d", inter_rank);
+
+        int init_cleanup_phase = num_segments % 2;
+
+        for (int cleanup_index = 0; cleanup_index < 2; cleanup_index++) {
+            if (1 == num_segments)
+                cleanup_index++;
+
+            int phase_selector = (init_cleanup_phase + cleanup_index) % 2;
+
+            tmp_bcast_wait_arr[0] = inter_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[1] = intra_bcast_reqs[phase_selector];
+            bk_request_wait_all(tmp_bcast_wait_arr, 2);
+            BKPAP_PROFILE("leave_cleanup_wait", inter_rank);
+            BKPAP_OUTPUT("FINISHED_CLEANUP_WAIT: rank: %d, cleanup_idx: %d", inter_rank, cleanup_index);
+
+            seg_buf = rbuf;
+            seg_buf += (real_seg_size * (num_segments - (2 - cleanup_index)));
+            int bcast_count = (0 == cleanup_index) ? seg_count : count - ((num_segments - 1) * seg_count);
+
+            intra_comm->c_coll->coll_ibcast(
+                seg_buf, bcast_count, dtype, 0, intra_comm,
+                &intra_bcast_reqs[phase_selector], intra_comm->c_coll->coll_ibcast_module
+            );
+
+            seg_buf += real_seg_size;
+        }
+
+        bk_request_wait_all(intra_bcast_reqs, 2);
+        BKPAP_PROFILE("final_cleanup_wait", inter_rank);
+        BKPAP_OUTPUT("CLEANUP_DONE: rank: %d", inter_rank);
+    }
+    else {
+        // ompi_request_t* red_req = (ompi_request_t*)OMPI_REQUEST_NULL, *bc_req = (ompi_request_t*)OMPI_REQUEST_NULL;
+        int  red_count = seg_count, bc_count = seg_count;
+        uint8_t* red_buf = rbuf, * bc_buf = rbuf;
+        ompi_request_t* req_arr[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
+
+        // start first pipeline segment
+        intra_comm->c_coll->coll_ireduce(
+            red_buf, NULL, red_count, dtype, op, 0, intra_comm, &req_arr[0],
+            intra_comm->c_coll->coll_ireduce_module);
+        ompi_request_wait(&req_arr[0], MPI_STATUS_IGNORE);
+
+        red_buf += real_seg_size;
+
+        for (int seg_index = 1; seg_index < num_segments; seg_index++) {
+            if ((num_segments - 1) == seg_index) {
+                red_count = count - (seg_index * seg_count);
+            }
+            BKPAP_OUTPUT("IS INTRA, rank: %d, seg_index: %d, num_segments: %d, red_count: %d, bc_count: %d, red_buf: [0x%p], bc_buf: [0x%p]",
+                intra_rank, seg_index, num_segments, red_count, bc_count, (void*) red_buf, (void*) bc_buf);
+
+            intra_comm->c_coll->coll_ireduce(
+                red_buf, NULL, red_count, dtype, op, 0, intra_comm, &req_arr[0],
+                intra_comm->c_coll->coll_ireduce_module);
+            intra_comm->c_coll->coll_ibcast(
+                bc_buf, bc_count, dtype, 0, intra_comm, &req_arr[1],
+                intra_comm->c_coll->coll_ibcast_module);
+
+            ompi_request_wait_all(2, req_arr, MPI_STATUSES_IGNORE);
+            red_buf += real_seg_size;
+            bc_buf += real_seg_size;
+        }
+
+        // cleanup last segment
+        bc_count = count - ((num_segments - 1) * seg_count);
+        intra_comm->c_coll->coll_ibcast(
+            bc_buf, bc_count, dtype, 0, intra_comm, &req_arr[1],
+            intra_comm->c_coll->coll_ibcast_module);
+        ompi_request_wait(&req_arr[1], MPI_STATUS_IGNORE);
+    }
+
+
+    if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("ktree_fullpipe_leave", inter_rank);
+
+    return ret;
+}
+
 static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count,
     struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size,
     struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm,
@@ -84,6 +345,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
     int k = mca_coll_bkpap_component.allreduce_k_value;
     int is_inter = (0 == intra_rank);
 
+    // if(seg_size >  type_size * seg_count) seg_count = count;
     int seg_count = count;
     size_t type_size;
     ptrdiff_t type_extent, type_lb;
@@ -93,43 +355,25 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
     int num_segments = (count + seg_count - 1) / seg_count;
     size_t real_seg_size = (ptrdiff_t)seg_count * type_extent;
 
+
     if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("ktree_pipeline_arrive", inter_rank);
 
-    void* intra_reduce_sbuf = (0 == intra_rank) ? MPI_IN_PLACE : rbuf;
-    void* intra_reduce_rbuf = (0 == intra_rank) ? rbuf : NULL;
 
-    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-        ret = intra_comm->c_coll->coll_reduce(
-            intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0,
-            intra_comm,
-            intra_comm->c_coll->coll_reduce_module);
-        break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        BKPAP_OUTPUT("REDUCE DBG comm: [%p], base_module: [%p], base_data: [%p], root: %d", (void*) intra_comm, (void*) bkpap_module, (void*) bkpap_module->super.base_data, 0);
-        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
-        break;
-    default:
-        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
-        return OMPI_ERROR;
-        break;
-    }
+    ret = _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
     _BK_CHK_RET(ret, "intra-node reduce failed");
-
 
     if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("finish_intra_reduce", inter_rank);
 
-    if (OPAL_LIKELY(is_inter)) {
-        BKPAP_OUTPUT("KTREE_PIPELINE_ARRIVE, rank: %d, count: %d, seg_size: %ld, dtype_size: %ld, num_segments:%d, inter_size: %d, intra_size: %d",
-            inter_rank, count, seg_size, type_size, num_segments, inter_size, intra_size);
+    BKPAP_OUTPUT("KTREE_PIPELINE_ARRIVE, rank: %d, count: %d, seg_size: %ld, dtype_size: %ld, num_segments:%d, inter_size: %d, intra_size: %d",
+        inter_rank, count, seg_size, type_size, num_segments, inter_size, intra_size);
+    if (is_inter) { // Node leader, do pipelineing and pap-awareness
         ompi_request_t* inter_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* intra_bcast_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* ss_reset_barrier_reqs[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
         ompi_request_t* tmp_bcast_wait_arr[3] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL };
 
         uint8_t* seg_buf = rbuf;
-        int bcast_count = seg_count, prev_bcast_count = 0;
+        int seg_iter_count = seg_count, prev_seg_iter_count = 0;
         int inter_bcast_root = -1;
 
         for (int seg_index = 0; seg_index < num_segments; seg_index++) {
@@ -138,27 +382,27 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             int phase_selector = (seg_index % 2);
             mca_coll_bkpap_remote_syncstruct_t* remote_ss_tmp = &(bkpap_module->remote_syncstructure[phase_selector]);
             if ((num_segments - 1) == seg_index) { // if last segment, and allignment doesn't line up with seg-count
-                bcast_count = count - (seg_index * seg_count);
+                seg_iter_count = count - (seg_index * seg_count);
             }
 
             BKPAP_OUTPUT("START_SEG: seg_index: %d, num_segments: %d, rank: %d, phase_selector: %d", seg_index, num_segments, inter_rank, phase_selector);
 
             // Wait Inter and Intra ibcasts
-            tmp_bcast_wait_arr[0] = (intra_bcast_reqs[phase_selector]);
-            tmp_bcast_wait_arr[1] = (inter_bcast_reqs[phase_selector]);
-            tmp_bcast_wait_arr[2] = (ss_reset_barrier_reqs[phase_selector]);
+            tmp_bcast_wait_arr[0] = intra_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[1] = inter_bcast_reqs[phase_selector];
+            tmp_bcast_wait_arr[2] = ss_reset_barrier_reqs[phase_selector];
             bk_request_wait_all(tmp_bcast_wait_arr, 3);
 
             BKPAP_PROFILE("leave_new_seg_wait", inter_rank);
 
             BKPAP_OUTPUT("LEAVE_WAIT_ALL: seg_index: %d, rank: %d, phase_selector: %d", seg_index, inter_rank, phase_selector);
 
-            if (seg_index > 1 && OPAL_LIKELY(inter_size != intra_size)) { // Launch Intra-bcast
+            if (seg_index > 1 && intra_size > 1) { // Launch Intra-bcast
                 BKPAP_OUTPUT("STARTING_INTRA_IBCAST: seg_index: %d, rank: %d", seg_index, inter_rank);
                 uint8_t* intra_buf = rbuf;
                 intra_buf += (seg_index - 2) * real_seg_size;
                 intra_comm->c_coll->coll_ibcast(
-                    intra_buf, prev_bcast_count, dtype, 0, intra_comm,
+                    intra_buf, prev_seg_iter_count, dtype, 0, intra_comm,
                     &intra_bcast_reqs[phase_selector], intra_comm->c_coll->coll_ibcast_module);
             }
 
@@ -189,9 +433,9 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
                     // TODO: this num_reduction logic only works for (k == 4) and (wsize is a power of 2),
                     // TODO: might want to fix at some point
                     int num_reductions = (sync_mask > inter_size) ? 1 : k - 1;
-                    BKPAP_OUTPUT("START_PBUF_REDUCE: seg_index: %d, rank: %d, num_reductions: %d, count: %d", seg_index, inter_rank, num_reductions, bcast_count);
+                    BKPAP_OUTPUT("START_PBUF_REDUCE: seg_index: %d, rank: %d, num_reductions: %d, count: %d", seg_index, inter_rank, num_reductions, seg_iter_count);
                     BKPAP_PROFILE("start_postbuf_reduce", inter_rank);
-                    ret = mca_coll_bkpap_reduce_dataplane(seg_buf, dtype, bcast_count, op, num_reductions, inter_comm, &bkpap_module->super);
+                    ret = mca_coll_bkpap_reduce_dataplane(seg_buf, dtype, seg_iter_count, op, num_reductions, inter_comm, &bkpap_module->super);
                     BKPAP_PROFILE("leave_postbuf_reduce", inter_rank);
                     _BK_CHK_RET(ret, "reduce postbuf failed");
                     BKPAP_OUTPUT("LEAVE_PBUF_REDUCE: seg_index: %d, rank: %d, sync_round: %d", seg_index, inter_rank, sync_round);
@@ -212,7 +456,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
                     BKPAP_OUTPUT("SEND_PARENT: seg_index: %d, rank: %d, arrival: %ld, send_rank: %d, send_arrival: %d, slot: %d, sync_mask: %d",
                         seg_index, inter_rank, arrival_pos, send_rank, send_arrival_pos, slot, sync_mask);
-                    ret = mca_coll_bkpap_send_dataplane(seg_buf, dtype, bcast_count, send_rank, slot, inter_comm, &bkpap_module->super);
+                    ret = mca_coll_bkpap_send_dataplane(seg_buf, dtype, seg_iter_count, send_rank, slot, inter_comm, &bkpap_module->super);
                     _BK_CHK_RET(ret, "write parrent postuf failed");
                     BKPAP_PROFILE("sent_parent_rank", inter_rank);
                     break;
@@ -229,11 +473,11 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             BKPAP_OUTPUT("STARTING_INTER_IBCAST: seg_index: %d, rank: %d, arrival: %ld", seg_index, inter_rank, arrival_pos);
             inter_comm->c_coll->coll_ibarrier(inter_comm, &(ss_reset_barrier_reqs[phase_selector]), inter_comm->c_coll->coll_ibarrier_module);
             inter_comm->c_coll->coll_ibcast(
-                seg_buf, bcast_count, dtype, inter_bcast_root, inter_comm,
+                seg_buf, seg_iter_count, dtype, inter_bcast_root, inter_comm,
                 &(inter_bcast_reqs[phase_selector]), inter_comm->c_coll->coll_ibcast_module);
             inter_bcast_root = -1;
 
-            prev_bcast_count = bcast_count;
+            prev_seg_iter_count = seg_iter_count;
             seg_buf += real_seg_size;
         }
         BKPAP_PROFILE("leave_main_loop", inter_rank);
@@ -256,7 +500,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
 
             seg_buf = rbuf;
             seg_buf += (real_seg_size * (num_segments - (2 - cleanup_index)));
-            bcast_count = (0 == cleanup_index) ? seg_count : count - ((num_segments - 1) * seg_count);
+            int bcast_count = (0 == cleanup_index) ? seg_count : count - ((num_segments - 1) * seg_count);
 
             intra_comm->c_coll->coll_ibcast(
                 seg_buf, bcast_count, dtype, 0, intra_comm,
@@ -270,7 +514,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
         BKPAP_PROFILE("final_cleanup_wait", inter_rank);
         BKPAP_OUTPUT("CLEANUP_DONE: rank: %d", inter_rank);
     }
-    else {
+    else {// non-leader, issues intra-bcasts
         int bcast_count = seg_count;
         ompi_request_t* bcast_req = (void*)OMPI_REQUEST_NULL;
         uint8_t* seg_buf = rbuf;
@@ -278,7 +522,7 @@ static inline int _bk_papaware_ktree_allreduce_pipelined(const void* sbuf, void*
             if ((num_segments - 1) == seg_index) {
                 bcast_count = count - (seg_index * seg_count);
             }
-            BKPAP_OUTPUT("in intra, rank: %d, seg_index: %d, num_segments: %d, bcast_count: %d", intra_rank, seg_index, num_segments, count);
+            BKPAP_OUTPUT("IS INTRA, rank: %d, seg_index: %d, num_segments: %d, count: %d", intra_rank, seg_index, num_segments, count);
 
             intra_comm->c_coll->coll_ibcast(
                 seg_buf, bcast_count, dtype, 0, intra_comm, &bcast_req,
@@ -308,26 +552,9 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
     BKPAP_OUTPUT("rank (%d, %d) Arrive at ktree, comm: '%s', sbuf: %p rbuf: %p", inter_rank, intra_rank, intra_comm->c_name, sbuf, rbuf);
     if (is_inter)BKPAP_PROFILE("arrive_at_ktree", inter_rank);
 
-    void* intra_reduce_sbuf = (0 == intra_rank) ? MPI_IN_PLACE : rbuf;
-    void* intra_reduce_rbuf = (0 == intra_rank) ? rbuf : NULL;
 
-    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-        ret = intra_comm->c_coll->coll_reduce(
-            intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0,
-            intra_comm,
-            intra_comm->c_coll->coll_reduce_module);
-        break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        ret = mca_coll_bkpap_reduce_intra_inplace_binomial(rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
-        break;
-    default:
-        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
-        return OMPI_ERROR;
-        break;
-    }
-    // _BK_CHK_RET(ret, "intra-node reduce failed");
+    ret = _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+    _BK_CHK_RET(ret, "intra-node reduce failed");
     if (OMPI_SUCCESS != ret) {
         BKPAP_ERROR("Intra-reduce failed, rank (%d, %d) returned %d (%s) exiting", inter_rank, intra_rank, ret, opal_strerror(ret));
         return ret;
@@ -340,8 +567,8 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
 
 #if OPAL_ENABLE_DEBUG
         int rbuf_is_cuda = opal_cuda_check_one_buf(rbuf, NULL);
-		void *chk_pbuf = (BKPAP_DATAPLANE_RMA == mca_coll_bkpap_component.dataplane_type) ?
-                    bkpap_module->local_pbuffs.rma.postbuf_attrs.address : bkpap_module->local_pbuffs.tag.buff_arr;
+        void* chk_pbuf = (BKPAP_DATAPLANE_RMA == mca_coll_bkpap_component.dataplane_type) ?
+            bkpap_module->local_pbuffs.rma.postbuf_attrs.address : bkpap_module->local_pbuffs.tag.buff_arr;
         int pbuf_is_cuda = opal_cuda_check_one_buf(chk_pbuf, NULL);
         char offsets_str[64] = { '\0' };
         _bk_fill_array_str_ld(
@@ -452,7 +679,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
     int ret = OMPI_SUCCESS, alg = mca_coll_bkpap_component.allreduce_alg;
     size_t dsize = -1, total_dsize = -1;
-    
+
     // TODO: Think about fastpath optimization
 
     if (OPAL_UNLIKELY(alg >= BKPAP_ALLREDUCE_ALG_COUNT)) {
@@ -526,24 +753,26 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
     switch (alg) {
     case BKPAP_ALLREDUCE_ALG_KTREE:
-        _bk_papaware_ktree_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
+        ret = _bk_papaware_ktree_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
     case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
-        _bk_papaware_ktree_allreduce_pipelined(sbuf, rbuf, count, dtype, op, mca_coll_bkpap_component.pipeline_segment_size, ss_intra_comm, ss_inter_comm, bkpap_module);
+        ret = _bk_papaware_ktree_allreduce_pipelined(sbuf, rbuf, count, dtype, op, mca_coll_bkpap_component.pipeline_segment_size, ss_intra_comm, ss_inter_comm, bkpap_module);
+        break;
+    case BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE:
+        ret = _bk_papaware_ktree_allreduce_fullpipelined(sbuf, rbuf, count, dtype, op, mca_coll_bkpap_component.pipeline_segment_size, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
     case BKPAP_ALLREDUCE_ALG_RSA:
-        _bk_papaware_rsa_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
+        ret = _bk_papaware_rsa_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
-
     default:
         BKPAP_ERROR("alg %d undefined, falling back", alg);
         goto bkpap_ar_fallback;
         break;
     }
+    BKPAP_CHK_MPI(ret, bkpap_ar_fallback);
 
-
-    BKPAP_OUTPUT("rank: %d returning BKPAP ALLREDUCE SUCCESSFULL", global_rank);
-    return OMPI_SUCCESS;
+    BKPAP_OUTPUT("rank: %d COMPLETE BKPAP ALLREDUCE", global_rank);
+    return ret;
 
 bkpap_ar_fallback:
 

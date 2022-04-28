@@ -83,7 +83,7 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_k_value);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "allreduce_alg", "Select pap-awareness alg for inter-stage allreduce, {0:ktree, 1:ktree-pipeline, 2:RSA}",
+        "allreduce_alg", "Select pap-awareness alg for inter-stage allreduce, {0:ktree, 1:ktree-pipeline, 2:ktree-fullpipe, 3:RSA}",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_alg);
 

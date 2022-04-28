@@ -41,7 +41,8 @@ enum mca_coll_bkpap_dbell_state {
 typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_KTREE = 0,
 	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
-	BKPAP_ALLREDUCE_ALG_RSA = 2,
+	BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE = 2,
+	BKPAP_ALLREDUCE_ALG_RSA = 3,
 	BKPAP_ALLREDUCE_ALG_COUNT
 } mca_coll_bkpap_allreduce_algs_t;
 
