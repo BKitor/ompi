@@ -22,8 +22,8 @@
 BEGIN_C_DECLS
 
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
-#define BKPAP_OUTPUT(_str,...) OPAL_OUTPUT_VERBOSE((9, ompi_coll_base_framework.framework_output,"BKOUT %s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__))
-#define BKPAP_PROFILE(_str,...) OPAL_OUTPUT_VERBOSE((5, ompi_coll_base_framework.framework_output," BKPAP_PROFILE: %.8f rank: %d "_str, MPI_Wtime(), ##__VA_ARGS__))
+#define BKPAP_OUTPUT(_str,...) OPAL_OUTPUT_VERBOSE((9, mca_coll_bkpap_output,"BKOUT %s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__))
+#define BKPAP_PROFILE(_str,...) OPAL_OUTPUT_VERBOSE((5, mca_coll_bkpap_output," BKPAP_PROFILE: %.8f rank: %d "_str, MPI_Wtime(), ##__VA_ARGS__))
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
 #define BKPAP_CHK_MALLOC(_buf, _lbl) if(OPAL_UNLIKELY(NULL == _buf)){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto _lbl;}
 #define BKPAP_CHK_UCP(_status, _lbl) if(OPAL_UNLIKELY(UCS_OK != _status)){BKPAP_ERROR("UCP op failed, going to "#_lbl); ret = OMPI_ERROR; goto _lbl;}
@@ -32,6 +32,8 @@ BEGIN_C_DECLS
 #define BKPAP_POSTBUF_SIZE (1<<26)
 #define BKPAP_SEGMENT_SIZE (1<<22)
 #define BKPAP_OUTPUT_VARS(...) // would be cool if I had a function that takes a list of local vars, generates a string, and calls BKPAP_OUPUT
+
+extern int mca_coll_bkpap_output;
 
 enum mca_coll_bkpap_dbell_state {
 	BKPAP_DBELL_UNSET = -1,
@@ -161,6 +163,7 @@ typedef struct mca_coll_bkpap_component_t {
 	int allreduce_k_value;
 	int allreduce_alg;
 	int priority;
+	int verbose;
 
 	mca_coll_bkpap_dataplane_t dataplane_type;
 

@@ -552,7 +552,7 @@ static inline int _bk_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int
         return ret;
     }
 
-    BKPAP_PROFILE("finish_intra_reduce", inter_rank);
+    if (is_inter)BKPAP_PROFILE("finish_intra_reduce", inter_rank);
 
 
     if (is_inter) {

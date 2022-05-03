@@ -3,7 +3,11 @@
 const char* mca_coll_bkpap_component_version_string =
 "Open MPI cuda collective MCA component version " OMPI_VERSION;
 
-static int bkpap_register(void);
+static int mca_coll_bkpap_register(void);
+static int mca_coll_bkpap_open(void);
+static int mca_coll_bkpap_close(void);
+
+int mca_coll_bkpap_output = -1;
 
 mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     {
@@ -11,7 +15,10 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
             MCA_COLL_BASE_VERSION_2_4_0,
             .mca_component_name = "bkpap",
             MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION, OMPI_RELEASE_VERSION),
-            .mca_register_component_params = bkpap_register,
+            .mca_register_component_params = mca_coll_bkpap_register,
+            .mca_open_component = mca_coll_bkpap_open,
+            .mca_close_component = mca_coll_bkpap_close,
+            .mca_query_component = NULL,
         },
         .collm_data = {
             MCA_BASE_METADATA_PARAM_CHECKPOINT
@@ -31,6 +38,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
     .priority = 35,
+    .verbose = 0,
     .dataplane_type = 0,
     .bk_postbuf_memory_type = BKPAP_POSTBUF_MEMORY_TYPE_HOST,
     .ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST
@@ -65,7 +73,16 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
     return OMPI_SUCCESS;
 }
 
-static int bkpap_register(void) {
+static int mca_coll_bkpap_register(void) {
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "priority", "Priority of the component",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.priority);
+
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "verbose", "Verbosity of the component",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.verbose);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "postbuff_size", "Size of preposted buffer, default 64MB",
@@ -87,10 +104,6 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.allreduce_alg);
 
-    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
-        "priority", "Priority of the component",
-        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.priority);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "postbuf_mem_type", "postbuf memory types, {0:Host, 1:CUDA, 2:CUDA Managed}",
@@ -102,5 +115,16 @@ static int bkpap_register(void) {
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.dataplane_type);
 
+    return OMPI_SUCCESS;
+}
+
+static int mca_coll_bkpap_open(void){
+    mca_coll_bkpap_output = opal_output_open(NULL);
+    opal_output_set_verbosity(mca_coll_bkpap_output, mca_coll_bkpap_component.verbose);
+    // TODO: Init UCX here?
+    return OMPI_SUCCESS;
+}
+static int mca_coll_bkpap_close(void){
+    // TODO: Close UCX here?
     return OMPI_SUCCESS;
 }
