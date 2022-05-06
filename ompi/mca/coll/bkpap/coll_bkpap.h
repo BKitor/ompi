@@ -28,6 +28,7 @@ BEGIN_C_DECLS
 #define BKPAP_CHK_MALLOC(_buf, _lbl) if(OPAL_UNLIKELY(NULL == _buf)){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto _lbl;}
 #define BKPAP_CHK_UCP(_status, _lbl) if(OPAL_UNLIKELY(UCS_OK != _status)){BKPAP_ERROR("UCP op failed, going to "#_lbl); ret = OMPI_ERROR; goto _lbl;}
 #define BKPAP_CHK_MPI(_ret, _lbl) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR("MPI op failed, going to "#_lbl); goto _lbl;}
+#define BKPAP_CHK_MPI_MSG_LBL(_ret, _msg, _lbl) if(OPAL_UNLIKELY(OMPI_SUCCESS != _ret)){BKPAP_ERROR(_msg", going to"#_lbl); goto _lbl;}
 #define BKPAP_CHK_CUDA(_ret, _lbl) if(OPAL_UNLIKELY(cudaSuccess != _ret)){BKPAP_ERROR("CUDA op failed, going to "#_lbl); goto _lbl;}
 #define BKPAP_POSTBUF_SIZE (1<<26)
 #define BKPAP_SEGMENT_SIZE (1<<22)
