@@ -70,10 +70,13 @@ done
 
 bk_cond_osu_tst() {
 	if [ "$1" == "1" ]; then
-		echo "bkpap_allreduce_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
+		echo "bkpap_prio: $OMPI_MCA_coll_bkpap_priority"
+		echo "bkpap_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
 		echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
-		echo "ucc_en: $OMPI_MCA_coll_ucc_enable"
-		echo "ucc_tl: $UCC_CL_BASIC_TLS"
+		echo "bkpap_seg_size: $OMPI_MCA_coll_bkpap_pipeline_segment_size"
+		echo "ucc_prio: $OMPI_MCA_coll_ucc_priority"
+		echo "ucc_enable: $OMPI_MCA_coll_ucc_enable"
+		echo "cuda_prio: $OMPI_MCA_coll_cuda_priority"
 		mpirun -n $BK_NUM_PROC \
 			--display bind \
 			--map-by pack \
@@ -105,11 +108,12 @@ BK_OSU_PAP="$BK_OMB_DIR/build/libexec/osu-micro-benchmarks/mpi/collective/bk_osu
 
 export OMPI_MCA_coll_cuda_priority=31
 export OMPI_MCA_coll_bkpap_priority=35
+export OMPI_MCA_coll_ucc_priority=20
 export OMPI_MCA_coll_ucc_enable=0
 export UCC_CL_BASIC_TLS=all
 
 export OMPI_MCA_coll_bkpap_dataplane_type=1
-BK_MIN_MSIZE=$((1 << 26))
+BK_MIN_MSIZE=$((1 << 25))
 BK_MAX_MSIZE=$((1 << 28))
 export OMPI_MCA_coll_bkpap_postbuff_size=$BK_MAX_MSIZE
 export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 25))
