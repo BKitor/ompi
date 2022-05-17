@@ -68,18 +68,33 @@ while getopts ":v:a:unm:" bk_opt; do
 	esac
 done
 
-bk_cond_osu_tst() {
+bk_exp_out() {
+	echo "bkpap_allreduce_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
+	echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
+	echo "ucc_en: $OMPI_MCA_coll_ucc_enable"
+	echo "ucc_tl: $UCC_CL_BASIC_TLS"
+	echo "val_nf: $BK_VAL_FN"
+}
+
+bk_val_cond_tst() {
 	if [ "$1" == "1" ]; then
-		echo "bkpap_allreduce_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
-		echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
-		echo "ucc_en: $OMPI_MCA_coll_ucc_enable"
-		echo "ucc_tl: $UCC_CL_BASIC_TLS"
-		mpirun -n $BK_NUM_PROC \
-			--display bind \
-			--map-by pack \
-			$BK_OSU_PAP \
-			-m "$BK_MIN_MSIZE:$BK_MAX_MSIZE" \
-			$BK_EXP_FLAGS
+		bk_exp_out
+		mpicc -o ar_val.out ar_val.c -Wall &&
+			mpirun -n $BK_NUM_PROC \
+				--display bind \
+				--map-by core \
+				./ar_val.out
+	fi
+}
+
+bk_val_cu_cond_tst() {
+	if [ "$1" == "1" ]; then
+		bk_exp_out
+		mpicc -o ar_val_cu.out ar_val_cu.c -Wall -lcuda -lcudart &&
+			mpirun -n $BK_NUM_PROC \
+				--display bind \
+				--map-by core \
+				./ar_val_cu.out
 	fi
 }
 
@@ -89,19 +104,15 @@ export UCX_IB_MLX5_DEVX=no
 # export UCX_SHM_DEVICES=""
 # export UCX_IB_PREFER_NEAREST_DEVICE=no
 # export UCX_NET_DEVICES=mlx5_0:1
-
-BK_EXP_FLAGS="-x 10 -i 100"
+BK_VAL_FN=bk_val_cond_tst
 export OMPI_MCA_coll_bkpap_postbuf_mem_type=0
 if [ "c" = $BK_MEM_TYPE ]; then
-	BK_EXP_FLAGS+=" -d cuda"
 	export OMPI_MCA_coll_bkpap_postbuf_mem_type=1
+	BK_VAL_FN=bk_val_cu_cond_tst
 elif [ "m" = $BK_MEM_TYPE ]; then
-	BK_EXP_FLAGS+=" -d managed"
 	export OMPI_MCA_coll_bkpap_postbuf_mem_type=2
+	BK_VAL_FN=bk_val_cu_cond_tst
 fi
-echo $BK_EXP_FLAGS
-
-BK_OSU_PAP="$BK_OMB_DIR/build/libexec/osu-micro-benchmarks/mpi/collective/bk_osu_pap_allreduce"
 
 export OMPI_MCA_coll_cuda_priority=31
 export OMPI_MCA_coll_bkpap_priority=35
@@ -109,27 +120,25 @@ export OMPI_MCA_coll_ucc_enable=0
 export UCC_CL_BASIC_TLS=all
 
 export OMPI_MCA_coll_bkpap_dataplane_type=1
-BK_MIN_MSIZE=$((1 << 26))
-BK_MAX_MSIZE=$((1 << 28))
-export OMPI_MCA_coll_bkpap_postbuff_size=$BK_MAX_MSIZE
+export OMPI_MCA_coll_bkpap_postbuff_size=$((1<<25))
 export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 25))
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=0
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG0
+BK_NUM_PROC=4 $BK_VAL_FN $BK_RUN_ALG0
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=1
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG1
+BK_NUM_PROC=4 $BK_VAL_FN $BK_RUN_ALG1
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=2
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG2
+BK_NUM_PROC=4 $BK_VAL_FN $BK_RUN_ALG2
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=3
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG3
+BK_NUM_PROC=4 $BK_VAL_FN $BK_RUN_ALG3
 
 export OMPI_MCA_coll_ucc_priority=35
 export OMPI_MCA_coll_ucc_enable=1
 export OMPI_MCA_coll_bkpap_priority=29
 export UCC_CL_BASIC_TLS=ucp
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_UCC
+BK_NUM_PROC=4 $BK_VAL_FN $BK_RUN_UCC
 export UCC_CL_BASIC_TLS=all
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_NCCL
+BK_NUM_PROC=4 $BK_VAL_FN $BK_RUN_NCCL

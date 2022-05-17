@@ -237,10 +237,9 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		return ret;
 	}
 
-	int num_postbufs = (mca_coll_bkpap_component.allreduce_k_value - 1); // should depend on component.alg
 	switch (mca_coll_bkpap_component.dataplane_type) {
 	case BKPAP_DATAPLANE_RMA:
-		ret = mca_coll_bkpap_rma_wireup(num_postbufs, bkpap_module, comm);
+		ret = mca_coll_bkpap_rma_wireup(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("RMA Wireup Failed, fallingback");
 			return ret;
@@ -248,7 +247,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		break;
 
 	case BKPAP_DATAPLANE_TAG:
-		ret = mca_coll_bkpap_tag_wireup(num_postbufs, bkpap_module, comm);
+		ret = mca_coll_bkpap_tag_wireup(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("TAG Wireup Failed, fallingback");
 			return ret;
@@ -289,8 +288,10 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		}
 		break;
 	case BKPAP_ALLREDUCE_ALG_RSA:
-		BKPAP_ERROR("bkpap RSA alg not implemented, aborting");
-		return OPAL_ERR_NOT_IMPLEMENTED;
+		num_syncstructures = 1;
+		counter_arr_len = 1;
+		arrival_arr_len = ompi_comm_size(comm);
+		arrival_arr_offsets_tmp = NULL;
 		break;
 	default:
 		BKPAP_ERROR("Bad algorithms specified, failed to setup syncstructure");

@@ -263,6 +263,7 @@ bkpap_syncstructure_wireup_err:
 	return ret;
 }
 
+// TODO: Add a check that arrival_pos < comm_size, and stall if it isn't  
 int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t arrival_arr_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss,
 	mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm, int64_t* ret_pos) {
 	ucs_status_ptr_t status_ptr = NULL;

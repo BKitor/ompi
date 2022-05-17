@@ -22,20 +22,14 @@ int main(int argc, char* argv[]) {
     cudaSetDevice(rank);
 
     size_t bff_size = count * sizeof(*snd_bff);
-    cudaMallocManaged((void*)&snd_bff, bff_size, cudaMemAttachGlobal);
-    cudaMallocManaged((void*)&rcv_bff, bff_size, cudaMemAttachGlobal);
+    cudaMalloc((void*)&snd_bff, bff_size);
+    cudaMalloc((void*)&rcv_bff, bff_size);
     loc_tmp = malloc(bff_size);
 
     float g_sum = 0.0;
     for (int i = 0; i < size; i++) {
         g_sum += (float)i;
     }
-    
-	struct cudaPointerAttributes cu_attrs;
-	cudaPointerGetAttributes(&cu_attrs, rcv_bff);
-    int is_cuda_rbuf = (cudaMemoryTypeDevice  == cu_attrs.type || cudaMemoryTypeManaged == cu_attrs.type);
-    printf("INTERNAL CHECK %d\n", is_cuda_rbuf);
-    fflush(stdout);
 
     for (int i = 0; i < BK_NUM_ITERS; i++) {
         int err = 0;

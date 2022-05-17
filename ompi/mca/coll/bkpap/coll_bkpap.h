@@ -34,6 +34,21 @@ BEGIN_C_DECLS
 #define BKPAP_SEGMENT_SIZE (1<<22)
 #define BKPAP_OUTPUT_VARS(...) // would be cool if I had a function that takes a list of local vars, generates a string, and calls BKPAP_OUPUT
 
+/* RSA tag format:
+ * |  63 --- 2  |   1   |     0     |
+ * | comm_round | RS/AG | data/rank |
+ * |   Round    | phase |    type   |
+ *
+ * Round and phase are populated by _bk_papaware_rsa_allreduce, and type is populated by bk_ucp_p2p
+ * BK_RSA_MAKE_TAG calls opal_hibit with staring pos at 16, which will break if comm_size > 2^18 (256K proc) 
+*/
+#define BK_RSA_MAKE_TAG(_tag, _tag_mask, _num_rounds, _round, _phase) { \
+        _tag_mask = ((uint64_t)((( 1ul << opal_hibit(_num_rounds, 18)) - 1 ) << 3 ) | 7ul); \
+        _tag = (((uint64_t)(_round) << 2 ) | ((uint64_t)(_phase) << 1)); \
+    }
+#define BK_RSA_SET_TAG_TYPE_DATA(_tag) (_tag | 1ul)
+#define BK_RSA_SET_TAG_TYPE_RANK(_tag) (_tag & ~(1ul))
+
 extern int mca_coll_bkpap_output;
 
 enum mca_coll_bkpap_dbell_state {
@@ -192,16 +207,21 @@ int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_c
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, uint64_t arival_round_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_rma_wireup(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_rma_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
-int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_base_module_t* module);
+int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_rma_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_tag_wireup(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
-int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_base_module_t* module);
+int mca_coll_bkpap_tag_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recvbuf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module, uint32_t segsize, int max_outstanding_reqs);
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
+
+// use in RSA alg, early is for the first process (pos<ex), and late is for the second (pos>ex)
+int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int* peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_reduce_late_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_sendrecv(void* sbuf, int scount, void* rbuf, int rcount, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 END_C_DECLS
 #endif

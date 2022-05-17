@@ -7,7 +7,7 @@
 #pragma GCC diagnostic pop
 
 
-int mca_coll_bkpap_rma_wireup(int num_bufs, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
+int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
 	int ret = OMPI_SUCCESS, mpi_size = ompi_comm_size(comm), mpi_rank = ompi_comm_rank(comm);
 	ucs_status_t status = UCS_OK;
 	ucp_mem_map_params_t mem_map_params;
@@ -16,6 +16,12 @@ int mca_coll_bkpap_rma_wireup(int num_bufs, mca_coll_bkpap_module_t* module, str
 	int* agv_displ_arr = NULL, * agv_count_arr = NULL;
 	uint8_t* agv_rkey_recv_buf = NULL;
 	size_t agv_rkey_recv_buf_size = 0;
+	int num_bufs = mca_coll_bkpap_component.allreduce_k_value - 1;
+	
+	if(BKPAP_ALLREDUCE_ALG_RSA == mca_coll_bkpap_component.allreduce_alg){
+		BKPAP_ERROR("RSA with RMS dataplane is not supported");
+		return OMPI_ERR_NOT_SUPPORTED;
+	}
 
 	BKPAP_MSETZ(mem_map_params);
 	BKPAP_MSETZ(module->local_pbuffs.rma.dbell_attrs);
@@ -190,8 +196,7 @@ bkpap_remotepostbuf_wireup_err:
 
 int mca_coll_bkpap_rma_send_postbuf(const void* buf,
 	struct ompi_datatype_t* dtype, int count, int dest, int slot,
-	struct ompi_communicator_t* comm, mca_coll_base_module_t* module) {
-	mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
+	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
 	ucs_status_t status = UCS_OK;
 	ucs_status_ptr_t status_ptr = UCS_OK;
 	int ret = OMPI_SUCCESS;
@@ -205,14 +210,14 @@ int mca_coll_bkpap_rma_send_postbuf(const void* buf,
 		.user_data = NULL,
 		.cb.send = _bk_send_cb
 	};
-	postbuf_addr = (bkpap_module->remote_pbuffs.buffer_addr_arr[dest]) + (slot * mca_coll_bkpap_component.postbuff_size);
+	postbuf_addr = (module->remote_pbuffs.buffer_addr_arr[dest]) + (slot * mca_coll_bkpap_component.postbuff_size);
 	ompi_datatype_type_size(dtype, &dtype_size);
 	buf_size = dtype_size * (ptrdiff_t)count;
 
 	status_ptr = ucp_put_nbx(
-		bkpap_module->ucp_ep_arr[dest], buf, buf_size,
+		module->ucp_ep_arr[dest], buf, buf_size,
 		postbuf_addr,
-		bkpap_module->remote_pbuffs.buffer_rkey_arr[dest],
+		module->remote_pbuffs.buffer_rkey_arr[dest],
 		&req_attr);
 	if (UCS_PTR_IS_ERR(status_ptr)) {
 		BKPAP_ERROR("rank %d, write rank %d postbuf returned error %d (%s)", ompi_comm_rank(comm), dest, UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
@@ -228,12 +233,12 @@ int mca_coll_bkpap_rma_send_postbuf(const void* buf,
 		return OMPI_ERROR;
 	}
 
-	uint64_t dbell_addr = (bkpap_module->remote_pbuffs.dbell_addr_arr[dest]) + (slot * sizeof(uint64_t));
+	uint64_t dbell_addr = (module->remote_pbuffs.dbell_addr_arr[dest]) + (slot * sizeof(uint64_t));
 	req_attr.memory_type = UCS_MEMORY_TYPE_HOST;
 	status_ptr = ucp_put_nbx(
-		bkpap_module->ucp_ep_arr[dest], &dbell_put_buf, sizeof(dbell_put_buf),
+		module->ucp_ep_arr[dest], &dbell_put_buf, sizeof(dbell_put_buf),
 		dbell_addr,
-		bkpap_module->remote_pbuffs.dbell_rkey_arr[dest],
+		module->remote_pbuffs.dbell_rkey_arr[dest],
 		&req_attr);
 	if (UCS_PTR_IS_ERR(status_ptr)) {
 		BKPAP_ERROR("rank %d write rank %d debll returned error %d (%s)", ompi_comm_rank(comm), dest, UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
@@ -253,11 +258,10 @@ int mca_coll_bkpap_rma_send_postbuf(const void* buf,
 }
 
 int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count,
-	ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_base_module_t* module) {
+	ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
 	int ret = OMPI_SUCCESS;
-	mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
-	volatile int64_t* dbells = bkpap_module->local_pbuffs.rma.dbell_attrs.address;
-	uint8_t* pbuffs = bkpap_module->local_pbuffs.rma.postbuf_attrs.address;
+	volatile int64_t* dbells = module->local_pbuffs.rma.dbell_attrs.address;
+	uint8_t* pbuffs = module->local_pbuffs.rma.postbuf_attrs.address;
 
 	for (int i = 0; i < num_buffers; i++) {
 		while (BKPAP_DBELL_UNSET == dbells[i]) ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
