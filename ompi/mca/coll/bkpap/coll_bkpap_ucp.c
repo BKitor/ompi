@@ -305,19 +305,10 @@ int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t 
 	status_ptr = ucp_put_nbx(
 		module->ucp_ep_arr[0], &put_buf, sizeof(put_buf),
 		put_addr, remote_ss->arrival_arr_rkey, &req_params);
-	if (OPAL_UNLIKELY(UCS_PTR_IS_ERR(status_ptr))) {
-		status = UCS_PTR_STATUS(status_ptr);
-		BKPAP_ERROR("atomic_op_nbx failed code %d (%s)", status, ucs_status_string(status));
-		ucp_request_free(status_ptr);
-		return OMPI_ERROR;
-	}
-	if (UCS_OK != status_ptr) {
-		ucp_request_free(status_ptr);
-	}
-
-	status = _bk_flush_worker();
+	
+	status = _bk_poll_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
-		BKPAP_ERROR("_bk_flush_worker failed code %d (%s)", status, ucs_status_string(status));
+		BKPAP_ERROR("_bk_poll_completion failed code: %d, (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
 	}
 
