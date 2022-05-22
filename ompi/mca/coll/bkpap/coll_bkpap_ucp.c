@@ -305,7 +305,7 @@ int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t 
 	status_ptr = ucp_put_nbx(
 		module->ucp_ep_arr[0], &put_buf, sizeof(put_buf),
 		put_addr, remote_ss->arrival_arr_rkey, &req_params);
-	
+
 	status = _bk_poll_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("_bk_poll_completion failed code: %d, (%s)", status, ucs_status_string(status));
@@ -331,7 +331,7 @@ int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_c
 	int64_t op_buffer = -1;
 	status_ptr = ucp_atomic_op_nbx(module->ucp_ep_arr[0], UCP_ATOMIC_OP_ADD, &op_buffer, 1, remote_ss->counter_addr, remote_ss->counter_rkey, &req_params);
 	status = _bk_poll_completion(status_ptr);
-	if(OPAL_UNLIKELY(UCS_OK != status)){
+	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("_poll_completoin of leave atomic failed");
 		return OMPI_ERROR;
 	}
@@ -377,7 +377,7 @@ int mca_coll_bkpap_get_rank_of_arrival(int arrival, uint64_t arrival_round_offse
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm,
 	mca_coll_bkpap_module_t* module) {
 	ucs_status_t status = UCS_OK;
-	ucs_status_ptr_t status_ptr = UCS_OK;
+	ucs_status_ptr_t status_ptr[2] = { UCS_OK, UCS_OK };
 	int ret = OMPI_SUCCESS;
 
 	ucp_request_param_t req_params = {
@@ -392,31 +392,15 @@ int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss
 		put_buffer[i] = -1;
 	}
 
-	status_ptr = ucp_put_nbx(module->ucp_ep_arr[0], put_buffer, put_buf_size,
+	status_ptr[0] = ucp_put_nbx(module->ucp_ep_arr[0], put_buffer, put_buf_size,
 		remote_ss->arrival_arr_addr, remote_ss->arrival_arr_rkey,
 		&req_params);
-	if (UCS_PTR_IS_ERR(status_ptr)) {
-		BKPAP_ERROR("rank %d failed to reset arrival_addr returned error %d (%s)",
-			ompi_comm_rank(comm), UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
-		return OMPI_ERROR;
-	}
-	if (UCS_PTR_IS_PTR(status_ptr)) {
-		ucp_request_free(status_ptr);
-	}
 
-	status_ptr = ucp_put_nbx(module->ucp_ep_arr[0], put_buffer,
+	status_ptr[1] = ucp_put_nbx(module->ucp_ep_arr[0], put_buffer,
 		(remote_ss->ss_counter_len * sizeof(int64_t)), remote_ss->counter_addr, remote_ss->counter_rkey,
 		&req_params);
-	if (UCS_PTR_IS_ERR(status_ptr)) {
-		BKPAP_ERROR("rank %d failed to reset counters returned error %d (%s)",
-			ompi_comm_rank(comm), UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
-		return OMPI_ERROR;
-	}
-	if (UCS_PTR_IS_PTR(status_ptr)) {
-		ucp_request_free(status_ptr);
-	}
 
-	status = _bk_flush_worker();
+	status = _bk_poll_all_completion(status_ptr, 2);
 	if (UCS_OK != status) {
 		BKPAP_ERROR("Flush failed");
 		return OMPI_ERROR;
