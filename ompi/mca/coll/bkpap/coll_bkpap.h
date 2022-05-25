@@ -40,7 +40,7 @@ BEGIN_C_DECLS
  * |   Round    | phase |    type   |
  *
  * Round and phase are populated by _bk_papaware_rsa_allreduce, and type is populated by bk_ucp_p2p
- * BK_RSA_MAKE_TAG calls opal_hibit with staring pos at 16, which will break if comm_size > 2^18 (256K proc) 
+ * BK_RSA_MAKE_TAG calls opal_hibit with staring pos at 16, which will break if comm_size > 2^18 (256K proc)
 */
 #define BK_RSA_MAKE_TAG(_tag, _tag_mask, _num_rounds, _round, _phase) { \
         _tag_mask = ((uint64_t)((( 1ul << opal_hibit(_num_rounds, 18)) - 1 ) << 3 ) | 7ul); \
@@ -61,6 +61,7 @@ typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
 	BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE = 2,
 	BKPAP_ALLREDUCE_ALG_RSA = 3,
+	BKPAP_ALLREDUCE_BASE_RSA_GPU = 4,
 	BKPAP_ALLREDUCE_ALG_COUNT
 } mca_coll_bkpap_allreduce_algs_t;
 
@@ -222,6 +223,8 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int* peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_reduce_late_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_sendrecv(void* sbuf, int scount, void* rbuf, int rcount, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_base_module_t* module);
 
 END_C_DECLS
 #endif

@@ -143,6 +143,10 @@ int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots,
 	void* counter_rkey_buffer = NULL, * arrival_arr_rkey_buffer = NULL;
 	size_t counter_rkey_buffer_size, arrival_arr_rkey_buffer_size;
 	int64_t* mapped_mem_tmp = NULL;
+	
+	if(0 == num_structures){
+		return MPI_SUCCESS;
+	}
 
 	module->remote_syncstructure = calloc(num_structures, sizeof(*module->remote_syncstructure));
 	BKPAP_CHK_MALLOC(module->remote_syncstructure, bkpap_syncstructure_wireup_err);

@@ -881,7 +881,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         ret = mca_coll_bkpap_lazy_init_module_ucx(bkpap_module, ss_inter_comm, alg);
         BKPAP_CHK_MPI(ret, bkpap_ar_abort);
 #if OPAL_ENABLE_DEBUG
-        if (0 == ompi_comm_rank(comm)) {
+        if (0 == ompi_comm_rank(comm) && bkpap_module->num_syncstructures > 0) {
             int64_t* arrival_arr_tmp = bkpap_module->local_syncstructure->arrival_arr_attr.address;
             int64_t* count_arr_tmp = bkpap_module->local_syncstructure->counter_attr.address;
             char arrival_str[128] = { '\0' };
@@ -906,6 +906,9 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         break;
     case BKPAP_ALLREDUCE_ALG_RSA:
         ret = _bk_papaware_rsa_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
+        break;
+    case BKPAP_ALLREDUCE_BASE_RSA_GPU:
+        ret = ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(sbuf, rbuf, count, dtype, op, comm, &bkpap_module->super);
         break;
     default:
         BKPAP_ERROR("alg %d undefined, falling back", alg);

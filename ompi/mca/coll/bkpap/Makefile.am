@@ -16,6 +16,7 @@ sources = coll_bkpap_module.c coll_bkpap_allreduce.c coll_bkpap_component.c \
 		  coll_bkpap_ucp.c \
 		  bkpap_kernel.h bkpap_kernel.cu \
 		  coll_bkpap_reduce.c \
+		  coll_bkpap_base_rsa_gpu.c \
 		  coll_bkpap_dplane_rma.c coll_bkpap_dplane_tag.c 
 		 
 

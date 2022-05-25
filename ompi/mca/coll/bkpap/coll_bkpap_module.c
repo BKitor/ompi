@@ -293,6 +293,12 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		arrival_arr_len = ompi_comm_size(comm);
 		arrival_arr_offsets_tmp = NULL;
 		break;
+	case BKPAP_ALLREDUCE_BASE_RSA_GPU:
+		num_syncstructures = 0;
+		counter_arr_len = 0;
+		arrival_arr_len = 0;
+		arrival_arr_offsets_tmp = NULL;
+	break;
 	default:
 		BKPAP_ERROR("Bad algorithms specified, failed to setup syncstructure");
 		return OMPI_ERROR;
@@ -309,6 +315,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		bkpap_module->remote_syncstructure[i].ss_arrival_arr_len = arrival_arr_len;
 		bkpap_module->remote_syncstructure[i].ss_arrival_arr_offsets = arrival_arr_offsets_tmp;
 	}
+	bkpap_module->num_syncstructures = num_syncstructures;
 	arrival_arr_offsets_tmp = NULL;
 
 	return ret;
