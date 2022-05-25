@@ -3,7 +3,7 @@
 BK_MEM_TYPE="c"
 print_help() {
 	echo "Usage: -v <verbosity> -a <bkpap_alg> -u -n"
-	echo "-a <bkpap_alg> -- run a bkapap algorithm, options are [0..3]"
+	echo "-a <bkpap_alg> -- run a bkapap algorithm, options are [0..4]"
 	echo "-u -- flag to run ucp"
 	echo "-n -- flag to run nccl"
 	echo "-m <memory location> -- [h/c/m] for host/cuda/managed"
@@ -18,7 +18,7 @@ if [ "$#" == "0" ]; then
 	print_help
 fi
 
-while getopts ":v:a:unm:" bk_opt; do
+while getopts ":v:a:unm:d" bk_opt; do
 	case "${bk_opt}" in
 	v)
 		export OMPI_MCA_coll_bkpap_verbose="${OPTARG}"
@@ -36,6 +36,9 @@ while getopts ":v:a:unm:" bk_opt; do
 			;;
 		3)
 			BK_RUN_ALG3=1
+			;;
+		4)
+			BK_RUN_ALG4=1
 			;;
 		*)
 			echo "ERORR: bad value '-a ${OPTARG}'"
@@ -56,6 +59,9 @@ while getopts ":v:a:unm:" bk_opt; do
 		;;
 	n)
 		BK_RUN_NCCL=1
+		;;
+	d)
+		BK_RUN_DEF=1
 		;;
 	:)
 		echo "ERROR: -${OPTARG} requires and argument."
@@ -112,6 +118,7 @@ export OMPI_MCA_coll_ucc_priority=20
 export OMPI_MCA_coll_ucc_enable=0
 export UCC_CL_BASIC_TLS=all
 
+BK_NUM_PROC=4
 export OMPI_MCA_coll_bkpap_dataplane_type=1
 BK_MIN_MSIZE=$((1 << 25))
 BK_MAX_MSIZE=$((1 << 28))
@@ -119,21 +126,30 @@ export OMPI_MCA_coll_bkpap_postbuff_size=$BK_MAX_MSIZE
 export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 25))
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=0
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG0
+bk_cond_osu_tst $BK_RUN_ALG0
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=1
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG1
+bk_cond_osu_tst $BK_RUN_ALG1
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=2
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG2
+bk_cond_osu_tst $BK_RUN_ALG2
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=3
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_ALG3
+bk_cond_osu_tst $BK_RUN_ALG3
+
+export OMPI_MCA_coll_bkpap_allreduce_alg=4
+bk_cond_osu_tst $BK_RUN_ALG4
 
 export OMPI_MCA_coll_ucc_priority=35
 export OMPI_MCA_coll_ucc_enable=1
 export OMPI_MCA_coll_bkpap_priority=29
 export UCC_CL_BASIC_TLS=ucp
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_UCC
+bk_cond_osu_tst $BK_RUN_UCC
 export UCC_CL_BASIC_TLS=all
-BK_NUM_PROC=4 bk_cond_osu_tst $BK_RUN_NCCL
+bk_cond_osu_tst $BK_RUN_NCCL
+
+export OMPI_MCA_coll_cuda_priority=78
+export OMPI_MCA_coll_ucc_enable=0
+export OMPI_MCA_coll_ucc_priority=28
+export OMPI_MCA_coll_bkpap_priority=28
+bk_cond_osu_tst $BK_RUN_DEF
