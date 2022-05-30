@@ -1,5 +1,10 @@
 #include "coll_bkpap.h"
 
+#pragma GCC diagnostic ignored "-Wpedantic"
+#include <cuda.h>
+#include <cuda_runtime.h>
+#pragma GCC diagnostic pop
+
 static void _bk_send_cb(void* request, ucs_status_t status, void* args) {
 	mca_coll_bkpap_req_t* req = request;
 	req->ucs_status = status;
@@ -8,6 +13,55 @@ static void _bk_send_cb(void* request, ucs_status_t status, void* args) {
 
 static void _bk_send_cb_noparams(void* request, ucs_status_t status) {
 	_bk_send_cb(request, status, NULL);
+}
+
+static inline int bk_alloc_pbufft(void** out_ptr, size_t len){
+	int memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+	int ret = OMPI_SUCCESS;
+	switch (memtype){
+	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+		*out_ptr = malloc(len);
+		if (OPAL_UNLIKELY(NULL == *out_ptr)){
+			BKPAP_ERROR("bk_alloc_pbufft malloc returned null");
+			ret = OMPI_ERR_OUT_OF_RESOURCE;
+		}
+		break;
+	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+		ret = cudaMalloc(out_ptr, len);
+		if (OPAL_UNLIKELY(cudaSuccess != ret)){
+			BKPAP_ERROR("bk_alloc_pbufft cudaMalloc failed errocde %d", ret);
+			ret = OMPI_ERROR;
+		}
+		break;
+	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+		ret = cudaMallocManaged(out_ptr, len, cudaMemAttachGlobal);
+		if (OPAL_UNLIKELY(cudaSuccess != ret)){
+			BKPAP_ERROR("bk_alloc_pbufft cudaMalloc failed errocde %d", ret);
+			ret = OMPI_ERROR;
+		}
+		break;
+	default:
+		BKPAP_ERROR("bk_alloc_pbufft bad mem type %d", memtype);
+		ret = OMPI_ERROR;
+		break;
+	}
+	return ret;
+}
+
+static inline void bk_free_pbufft(void* ptr){
+	int memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+	switch (memtype){
+	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+		free(ptr);
+		break;
+	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+		cudaFree(ptr);
+		break;
+	default:
+		BKPAP_ERROR("bk_alloc_pbufft bad mem type %d", memtype);
+		break;
+	}
 }
 
 static inline int bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, size_t full_count, ompi_datatype_t* dtype) {
@@ -23,7 +77,6 @@ static inline int bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, si
 }
 
 static inline int mca_coll_bkpap_reduce_local(ompi_op_t* op, void* source, void* target, size_t count, ompi_datatype_t* dtype) {
-	// BKPAP_OUTPUT("DBG_REDUCE_IN: source[0]: %.2f, target[0]: %.2f", ((float*)source)[0], ((float*)target)[0]);
 	switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
 	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
 	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
@@ -37,8 +90,6 @@ static inline int mca_coll_bkpap_reduce_local(ompi_op_t* op, void* source, void*
 		return OMPI_ERROR;
 		break;
 	}
-
-	// BKPAP_OUTPUT("DBG_REDUCE_OUT: source[0]: %.2f, target[0]: %.2f", ((float*)source)[0], ((float*)target)[0]);
 	return OMPI_SUCCESS;
 }
 

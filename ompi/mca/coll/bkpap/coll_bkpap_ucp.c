@@ -29,15 +29,13 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 	ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES |
 		UCP_PARAM_FIELD_REQUEST_SIZE |
 		UCP_PARAM_FIELD_REQUEST_INIT |
-		UCP_PARAM_FIELD_MT_WORKERS_SHARED |
-		UCP_PARAM_FIELD_ESTIMATED_NUM_EPS;
+		UCP_PARAM_FIELD_MT_WORKERS_SHARED;
 	ucp_params.features = UCP_FEATURE_AMO64 | UCP_FEATURE_RMA;
 	ucp_params.features |= (mca_coll_bkpap_component.dataplane_type == BKPAP_DATAPLANE_TAG) ? UCP_FEATURE_TAG : 0;
 	ucp_params.request_size = sizeof(mca_coll_bkpap_req_t);
 	ucp_params.request_init = mca_coll_bkpap_req_init;
 	ucp_params.mt_workers_shared = 0; /* we do not need mt support for context
 									 since it will be protected by worker */
-	ucp_params.estimated_num_eps = ompi_proc_world_size();
 
 #if HAVE_DECL_UCP_PARAM_FIELD_ESTIMATED_NUM_PPN
 	ucp_params.estimated_num_ppn = opal_process_info.num_local_peers + 1;
@@ -111,16 +109,14 @@ int mca_coll_bkpap_wireup_endpoints(mca_coll_bkpap_module_t* module, struct ompi
 	BKPAP_CHK_MPI(ret, bkpap_ep_wireup_err);
 
 	// for loop to populate ep_arr
-	// module->ucp_ep_arr = calloc(mpi_size, sizeof(*module->ucp_ep_arr));
 	module->ucp_ep_arr = calloc(mpi_size, sizeof(ucp_ep_h));
 	BKPAP_CHK_MALLOC(module->ucp_ep_arr, bkpap_ep_wireup_err);
 	ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
 	module->wsize = mpi_size;
 	module->rank = mpi_rank;
 	for (int i = 0; i < mpi_size; i++) {
-		// if (i == mpi_rank)continue;
 		ep_params.address = (void*)(agv_remote_addr_recv_buf + agv_displ_arr[i]);
-		status = ucp_ep_create(mca_coll_bkpap_component.ucp_worker, &ep_params, &module->ucp_ep_arr[i]);
+		status = ucp_ep_create(mca_coll_bkpap_component.ucp_worker, &ep_params, &(module->ucp_ep_arr[i]));
 		BKPAP_CHK_UCP(status, bkpap_ep_wireup_err);
 	}
 
@@ -143,8 +139,8 @@ int mca_coll_bkpap_wireup_syncstructure(int num_counters, int num_arrival_slots,
 	void* counter_rkey_buffer = NULL, * arrival_arr_rkey_buffer = NULL;
 	size_t counter_rkey_buffer_size, arrival_arr_rkey_buffer_size;
 	int64_t* mapped_mem_tmp = NULL;
-	
-	if(0 == num_structures){
+
+	if (0 == num_structures) {
 		return MPI_SUCCESS;
 	}
 

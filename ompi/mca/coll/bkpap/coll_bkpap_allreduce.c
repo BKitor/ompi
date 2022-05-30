@@ -198,9 +198,6 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
                     round, arrival, exchange_rank, ((float*)recv_ptr)[0]);
 
             }
-            float* ftmp = rbuf;
-            BKPAP_OUTPUT("DBG_DONE_ROUND: rank: %d data: [ %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f ]", inter_rank,
-                ftmp[0], ftmp[1], ftmp[2], ftmp[3], ftmp[4], ftmp[5], ftmp[6], ftmp[7]);
             if (round + 1 < num_rounds) {
                 win_count = recv_count[round];
                 send_idx[round + 1] = recv_idx[round];
@@ -861,6 +858,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             BKPAP_ERROR("inter/intra communicator creation failed");
             goto bkpap_ar_abort;
         }
+        BKPAP_OUTPUT("Wireup hier comm SUCCESS");
     }
 
     int global_wsize = ompi_comm_size(comm);

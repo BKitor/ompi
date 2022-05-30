@@ -87,7 +87,7 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 	else if (BKPAP_DATAPLANE_TAG == mca_coll_bkpap_component.dataplane_type) {
 		if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
 			|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type) {
-				cudaFree(module->local_pbuffs.tag.buff_arr);
+			cudaFree(module->local_pbuffs.tag.buff_arr);
 		}
 		else {
 			free(module->local_pbuffs.tag.buff_arr);
@@ -139,7 +139,7 @@ mca_coll_base_module_t* mca_coll_bkpap_comm_query(struct ompi_communicator_t* co
 
 int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_communicator_t* comm) {
 	mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
-	mca_coll_base_comm_t *data = NULL;
+	mca_coll_base_comm_t* data = NULL;
 
 	// check for allgather/allgaterv, needed for setup when echangaing ucp data
 	if (NULL == comm->c_coll->coll_allgather_module || NULL == comm->c_coll->coll_allgatherv_module) {
@@ -161,8 +161,8 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 		bkpap_module->fallback_allreduce = comm->c_coll->coll_allreduce;
 		OBJ_RETAIN(bkpap_module->fallback_allreduce_module);
 	}
-	
-	if (NULL == bkpap_module->super.base_data){
+
+	if (NULL == bkpap_module->super.base_data) {
 		data = OBJ_NEW(mca_coll_base_comm_t);
 		BKPAP_CHK_MALLOC(data, bkpap_abort_module_enable);
 		data->cached_ntree = NULL;
@@ -184,8 +184,6 @@ bkpap_abort_module_enable:
 }
 
 int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
-#define _BKPAP_CHK_MPI(_ret) if(OMPI_SUCCESS != _ret){BKPAP_ERROR("MPI op in endpoint wireup failed"); goto bkpap_wireup_hier_comms_err;}
-#define _BKPAP_CHK_MALLOC(_buf) if(NULL == _buf){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto bkpap_wireup_hier_comms_err;}
 	int ret = OMPI_SUCCESS;
 	opal_info_t comm_info;
 	OBJ_CONSTRUCT(&comm_info, opal_info_t);
@@ -197,26 +195,23 @@ int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct omp
 	comm->c_coll->coll_allreduce_module = module->fallback_allreduce_module;
 
 	ret = opal_info_set(&comm_info, "ompi_comm_coll_preference", "tuned,^bkpap");
-	_BKPAP_CHK_MPI(ret);
+	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
 	ret = ompi_comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0,
 		&comm_info, &(module->intra_comm));
-	_BKPAP_CHK_MPI(ret);
+	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
 	int low_rank = ompi_comm_rank(module->intra_comm);
 
 	ret = opal_info_set(&comm_info, "ompi_comm_coll_preference", "tuned,^bkpap");
-	_BKPAP_CHK_MPI(ret);
+	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
 	ret = ompi_comm_split_with_info(comm, low_rank, w_rank, &comm_info, &(module->inter_comm), false);
-	_BKPAP_CHK_MPI(ret);
+	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
 
 	OBJ_DESTRUCT(&comm_info);
 
-	BKPAP_OUTPUT("Wireup hier comm SUCCESS");
 bkpap_wireup_hier_comms_err:
 	comm->c_coll->coll_allreduce = tmp_ar_f;
 	comm->c_coll->coll_allreduce_module = tmp_ar_m;
 	return ret;
-#undef _BKPAP_CHK_MPI
-#undef _BKPAP_CHK_MALLOC
 }
 
 int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, struct ompi_communicator_t* comm, int alg) {
@@ -298,7 +293,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		counter_arr_len = 0;
 		arrival_arr_len = 0;
 		arrival_arr_offsets_tmp = NULL;
-	break;
+		break;
 	default:
 		BKPAP_ERROR("Bad algorithms specified, failed to setup syncstructure");
 		return OMPI_ERROR;

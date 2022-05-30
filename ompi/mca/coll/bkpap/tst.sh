@@ -2,11 +2,13 @@
 
 BK_MEM_TYPE="c"
 print_help() {
-	echo "Usage: -v <verbosity> -a <bkpap_alg> -u -n"
+	echo "Usage: -v <verbosity> -a <bkpap_alg> -m <memtype> -u -n -s"
+	echo "-v <verbosity> -- 6 for profiling, 9 for full output"
 	echo "-a <bkpap_alg> -- run a bkapap algorithm, options are [0..4]"
 	echo "-u -- flag to run ucp"
 	echo "-n -- flag to run nccl"
 	echo "-m <memory location> -- [h/c/m] for host/cuda/managed"
+	echo "-s -- single run, sets msize to 1MB and OMB flags '-x 0 -i 1'"
 	exit
 }
 
@@ -18,7 +20,7 @@ if [ "$#" == "0" ]; then
 	print_help
 fi
 
-while getopts ":v:a:unm:d" bk_opt; do
+while getopts ":v:a:unm:ds" bk_opt; do
 	case "${bk_opt}" in
 	v)
 		export OMPI_MCA_coll_bkpap_verbose="${OPTARG}"
@@ -63,6 +65,9 @@ while getopts ":v:a:unm:d" bk_opt; do
 	d)
 		BK_RUN_DEF=1
 		;;
+	s)
+		BK_SINGLE_OMB=1
+		;;
 	:)
 		echo "ERROR: -${OPTARG} requires and argument."
 		print_help
@@ -85,7 +90,8 @@ bk_cond_osu_tst() {
 		echo "cuda_prio: $OMPI_MCA_coll_cuda_priority"
 		mpirun -n $BK_NUM_PROC \
 			--display bind \
-			--map-by pack \
+			--bind-to pack \
+			--map-by core \
 			$BK_OSU_PAP \
 			-m "$BK_MIN_MSIZE:$BK_MAX_MSIZE" \
 			$BK_EXP_FLAGS
@@ -100,15 +106,29 @@ export UCX_IB_MLX5_DEVX=no
 # export UCX_NET_DEVICES=mlx5_0:1
 
 BK_EXP_FLAGS="-x 10 -i 100"
+if [ "1" == "$BK_SINGLE_OMB" ]; then
+	BK_EXP_FLAGS="-x 0 -i 1"
+fi
+BK_MIN_MSIZE=$((1 << 19))
+
 export OMPI_MCA_coll_bkpap_postbuf_mem_type=0
-if [ "c" = $BK_MEM_TYPE ]; then
+if [ "c" = "$BK_MEM_TYPE" ]; then
 	BK_EXP_FLAGS+=" -d cuda"
 	export OMPI_MCA_coll_bkpap_postbuf_mem_type=1
-elif [ "m" = $BK_MEM_TYPE ]; then
+	BK_MIN_MSIZE=$((1 << 25))
+elif [ "m" = "$BK_MEM_TYPE" ]; then
 	BK_EXP_FLAGS+=" -d managed"
 	export OMPI_MCA_coll_bkpap_postbuf_mem_type=2
+	BK_MIN_MSIZE=$((1 << 25))
 fi
-echo $BK_EXP_FLAGS
+
+if [ "1" == "$BK_SINGLE_OMB" ]; then
+	BK_MAX_MSIZE=$BK_MIN_MSIZE
+else
+	BK_MAX_MSIZE=$((BK_MIN_MSIZE << 4))
+fi
+
+echo "exp_flags: $BK_EXP_FLAGS, min_size: $BK_MIN_MSIZE, max_size: $BK_MAX_MSIZE"
 
 BK_OSU_PAP="$BK_OMB_DIR/build/libexec/osu-micro-benchmarks/mpi/collective/bk_osu_pap_allreduce"
 
@@ -120,10 +140,8 @@ export UCC_CL_BASIC_TLS=all
 
 BK_NUM_PROC=4
 export OMPI_MCA_coll_bkpap_dataplane_type=1
-BK_MIN_MSIZE=$((1 << 25))
-BK_MAX_MSIZE=$((1 << 28))
 export OMPI_MCA_coll_bkpap_postbuff_size=$BK_MAX_MSIZE
-export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 25))
+export OMPI_MCA_coll_bkpap_pipeline_segment_size=$BK_MIN_MSIZE
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=0
 bk_cond_osu_tst $BK_RUN_ALG0

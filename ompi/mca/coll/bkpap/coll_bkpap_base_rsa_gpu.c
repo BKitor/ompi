@@ -18,9 +18,9 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
 
     int comm_size = ompi_comm_size(comm);
     int rank = ompi_comm_rank(comm);
-    OPAL_OUTPUT((ompi_coll_base_framework.framework_output,
-                 "coll:base:allreduce_intra_redscat_allgather: rank %d/%d",
-                 rank, comm_size));
+    BKPAP_PROFILE("base_rsa_gpu_start_algorithm", rank);
+    BKPAP_OUTPUT("coll:base:allreduce_intra_redscat_allgather: rank %d/%d",
+                 rank, comm_size);
 
     /* Find nearest power-of-two less than or equal to comm_size */
     int nsteps = opal_hibit(comm_size, comm->c_cube_dim + 1);   /* ilog2(comm_size) */
@@ -28,10 +28,9 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     int nprocs_pof2 = 1 << nsteps;                              /* flp2(comm_size) */
 
     if (count < nprocs_pof2 || !ompi_op_is_commute(op)) {
-        OPAL_OUTPUT((ompi_coll_base_framework.framework_output,
-                     "coll:base:allreduce_intra_redscat_allgather: rank %d/%d "
+        BKPAP_OUTPUT("coll:base:allreduce_intra_redscat_allgather: rank %d/%d "
                      "count %d switching to basic linear allreduce",
-                     rank, comm_size, count));
+                     rank, comm_size, count);
         return ompi_coll_base_allreduce_intra_basic_linear(sbuf, rbuf, count, dtype,
                                                            op, comm, module);
     }
@@ -48,9 +47,9 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     //     return OMPI_ERR_OUT_OF_RESOURCE;
     // tmp_buf = tmp_buf_raw - gap;
     char *tmp_buf = NULL, *tmp_buf_raw = NULL;
-	cudaMalloc((void**)&tmp_buf_raw, dsize);
-    if (NULL == tmp_buf_raw)
-        return OMPI_ERR_OUT_OF_RESOURCE;
+	int ret = bk_alloc_pbufft((void**)&tmp_buf_raw, dsize);
+    if (OMPI_SUCCESS != ret)
+        return ret;
     tmp_buf = tmp_buf_raw - gap;
 
     if (sbuf != MPI_IN_PLACE) {
@@ -76,6 +75,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
      * 0 to 2^{\floor{\log_2 p}} - 1.
      */
 
+    BKPAP_PROFILE("base_rsa_start_phase_1", rank);
     int vrank, step, wsize;
     int nprocs_rem = comm_size - nprocs_pof2;
 
@@ -98,8 +98,9 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
             if (MPI_SUCCESS != err) { goto cleanup_and_return; }
 
             /* Reduce on the right half of the buffers (result in rbuf) */
-            bk_gpu_op_reduce(op, (char *)tmp_buf + (ptrdiff_t)count_lhalf * extent,
+            mca_coll_bkpap_reduce_local(op, (char *)tmp_buf + (ptrdiff_t)count_lhalf * extent,
                            (char *)rbuf + count_lhalf * extent, count_rhalf, dtype);
+            // mca_coll_bkpap_reduce_local
 
             /* Send the right half to the left neighbor */
             err = MCA_PML_CALL(send((char *)rbuf + (ptrdiff_t)count_lhalf * extent,
@@ -126,7 +127,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
             if (MPI_SUCCESS != err) { goto cleanup_and_return; }
 
             /* Reduce on the right half of the buffers (result in rbuf) */
-            bk_gpu_op_reduce(op, tmp_buf, rbuf, count_lhalf, dtype);
+            mca_coll_bkpap_reduce_local(op, tmp_buf, rbuf, count_lhalf, dtype);
 
             /* Recv the right half from the right neighbor */
             err = MCA_PML_CALL(recv((char *)rbuf + (ptrdiff_t)count_lhalf * extent,
@@ -141,6 +142,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
         vrank = rank - nprocs_rem;
     }
 	
+    BKPAP_PROFILE("base_rsa_end_phase_1", rank);
     /*
      * Step 2. Reduce-scatter implemented with recursive vector halving and
      * recursive distance doubling. We have p' = 2^{\floor{\log_2 p}}
@@ -196,6 +198,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
                 rindex[step] = sindex[step] + scount[step];
             }
 
+            BKPAP_PROFILE("base_rsa_start_rs_sendrecv", rank);
             /* Send part of data from the rbuf, recv into the tmp_buf */
             err = ompi_coll_base_sendrecv((char *)rbuf + (ptrdiff_t)sindex[step] * extent,
                                           scount[step], dtype, dest,
@@ -206,12 +209,12 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
                                           MPI_STATUS_IGNORE, rank);
             if (MPI_SUCCESS != err) { goto cleanup_and_return; }
 
-			BKPAP_OUTPUT("MADE IT TO GPU REDUCE");
+            BKPAP_PROFILE("base_rsa_end_rs_sendrecv", rank);
             /* Local reduce: rbuf[] = tmp_buf[] <op> rbuf[] */
-            bk_gpu_op_reduce(op, (char *)tmp_buf + (ptrdiff_t)rindex[step] * extent,
+            mca_coll_bkpap_reduce_local(op, (char *)tmp_buf + (ptrdiff_t)rindex[step] * extent,
                            (char *)rbuf + (ptrdiff_t)rindex[step] * extent,
                            rcount[step], dtype);
-			BKPAP_OUTPUT("MADE IT THROUGH GPU REDUCE");
+            BKPAP_PROFILE("base_rsa_end_rs_reduce", rank);
 
             /* Move the current window to the received message */
             if (step + 1 < nsteps) {
@@ -233,6 +236,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
          * All exchanges are executed in reverse order relative
          * to recursive doubling (previous step).
          */
+        BKPAP_PROFILE("base_rsa_end_reduce_scatter", rank);
 
         step = nsteps - 1;
 
@@ -245,6 +249,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
              * Send rcount[step] elements from rbuf[rindex[step]...]
              * Recv scount[step] elements to rbuf[sindex[step]...]
              */
+            BKPAP_PROFILE("base_rsa_start_ag_sendrecv", rank);
             err = ompi_coll_base_sendrecv((char *)rbuf + (ptrdiff_t)rindex[step] * extent,
                                           rcount[step], dtype, dest,
                                           MCA_COLL_BASE_TAG_ALLREDUCE,
@@ -252,11 +257,13 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
                                           scount[step], dtype, dest,
                                           MCA_COLL_BASE_TAG_ALLREDUCE, comm,
                                           MPI_STATUS_IGNORE, rank);
+            BKPAP_PROFILE("base_rsa_end_ag_sendrecv", rank);
             if (MPI_SUCCESS != err) { goto cleanup_and_return; }
             step--;
         }
     }
 
+    BKPAP_PROFILE("base_rsa_end_allgather", rank);
     /*
      * Step 4. Send total result to excluded odd ranks.
      */
@@ -276,10 +283,11 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
             if (MPI_SUCCESS != err) { goto cleanup_and_return; }
         }
     }
+    BKPAP_PROFILE("base_rsa_end_phase_4", rank);
 
   cleanup_and_return:
     if (NULL != tmp_buf_raw)
-        cudaFree(tmp_buf_raw);
+        bk_free_pbufft(tmp_buf_raw);
     if (NULL != rindex)
         free(rindex);
     if (NULL != sindex)
@@ -288,6 +296,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
         free(rcount);
     if (NULL != scount)
         free(scount);
+    BKPAP_PROFILE("base_rsa_gpu_end_algorithm", rank);
     return err;
 }
 

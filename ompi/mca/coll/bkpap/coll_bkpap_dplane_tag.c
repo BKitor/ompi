@@ -42,31 +42,8 @@ int mca_coll_bkpap_tag_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 	int num_postbufs = (BKPAP_ALLREDUCE_ALG_RSA == alg) ? 1 : (mca_coll_bkpap_component.allreduce_k_value - 1); // should depend on component.alg
 	size_t mapped_postbuf_size = mca_coll_bkpap_component.postbuff_size * num_postbufs;
 	void* mapped_postbuf = NULL;
-
-	switch (mem_type) {
-	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-		ret = posix_memalign(&mapped_postbuf, sizeof(int64_t), mapped_postbuf_size);
-		if (0 != ret || NULL == mapped_postbuf) {
-			BKPAP_ERROR("posix_memaligh failed");
-			goto bkpap_abort_tag_wireup;
-		}
-		ret = OMPI_SUCCESS;
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-		ret = cudaMalloc(&mapped_postbuf, mapped_postbuf_size);
-		BKPAP_CHK_CUDA(ret, bkpap_abort_tag_wireup);
-		ret = OMPI_SUCCESS;
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-		ret = cudaMallocManaged(&mapped_postbuf, mapped_postbuf_size, cudaMemAttachGlobal);
-		BKPAP_CHK_CUDA(ret, bkpap_abort_tag_wireup);
-		ret = OMPI_SUCCESS;
-		break;
-	default:
-		BKPAP_ERROR("bad memory type %d, values are {0:Host, 1:CUDA, 2:CUDA Managed}", mem_type);
-		return OMPI_ERROR;
-		break;
-	}
+	
+	bk_alloc_pbufft(&mapped_postbuf, mapped_postbuf_size);
 
 	tag_postbuf->buff_arr = mapped_postbuf;
 	tag_postbuf->num_buffs = num_postbufs;
@@ -74,7 +51,6 @@ int mca_coll_bkpap_tag_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 	tag_postbuf->mem_type = mem_type;
 	return ret;
 
-bkpap_abort_tag_wireup:
 	BKPAP_ERROR("Tag Wireup Error");
 	return OMPI_ERROR;
 }
