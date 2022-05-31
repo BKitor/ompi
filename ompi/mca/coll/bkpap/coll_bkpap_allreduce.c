@@ -110,7 +110,7 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     ompi_datatype_get_extent(dtype, &lb, &extent);
 
     BKPAP_OUTPUT("ARRIVE_AT_RSA: num_rounds: %d, data_size: 0x%lx, rbuf_ptr: [0x%p]", num_rounds, (extent * count), rbuf);
-    BKPAP_PROFILE("bkpap_rsa_start_algorithm", inter_rank);
+    if(is_inter)BKPAP_PROFILE("bkpap_rsa_start_algorithm", inter_rank);
 
     if (OPAL_UNLIKELY(num_rounds > 0 && (1 << num_rounds) != inter_size)) { // only support power of 2 world size
         BKPAP_ERROR("inter size: %d not supported (num_rounds: %d (%d))", inter_size, num_rounds, (1 << num_rounds));
@@ -124,6 +124,9 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     }
 
     // intra_reduce
+    _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+    BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_rsa_allreduce_exit);
+    if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_reduce", inter_rank);
 
     if (is_inter) {
         int64_t arrival_pos = -1;
@@ -230,10 +233,16 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     }
 
     // intra_bcast
+    ret = intra_comm->c_coll->coll_bcast(
+        rbuf, count, dtype, 0,
+        intra_comm,
+        intra_comm->c_coll->coll_bcast_module);
+    BKPAP_CHK_MPI_MSG_LBL(ret, "intra-stage bcast failed", bkpap_rsa_allreduce_exit);
 
+    if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_bcast", inter_rank);
 
 bkpap_rsa_allreduce_exit:
-    BKPAP_PROFILE("bkpap_rsa_end_algorithm", inter_rank);
+    if(is_inter)BKPAP_PROFILE("bkpap_rsa_end_algorithm", inter_rank);
     if (NULL != ex_rank_array) free(ex_rank_array);
     if (NULL != send_idx) free(send_idx);
     if (NULL != recv_idx) free(recv_idx);
