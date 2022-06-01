@@ -164,16 +164,16 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
                 void* recv_ptr = (int8_t*)rbuf + ((ptrdiff_t)recv_idx[round] * extent);
 
                 BK_RSA_MAKE_TAG(tag, tag_mask, num_rounds, round, 0);
-                BKPAP_OUTPUT("RSA_REDUCE_EARLY: round: %d, arrival: %d, send_idx: %d, send_count: %d, recv_idx: %d, recv_count: %d, sample: (%.2f)",
-                    round, arrival, send_idx[round], send_count[round], recv_idx[round], recv_count[round], ((float*)recv_ptr)[0]);
+                BKPAP_OUTPUT("RSA_REDUCE_EARLY: round: %d, arrival: %d, send_idx: %d, send_count: %d, recv_idx: %d, recv_count: %d",
+                    round, arrival, send_idx[round], send_count[round], recv_idx[round], recv_count[round]);
                 BKPAP_PROFILE("bkpap_rsa_enter_early_exchange", inter_rank);
                 ret = mca_coll_bkpap_reduce_early_p2p(send_ptr, send_count[round], recv_ptr, recv_count[round],
                     &exchange_rank, tag, tag_mask, dtype, op, inter_comm, bkpap_module);
                 BKPAP_PROFILE("bkpap_rsa_leave_early_exchange", inter_rank);
 
                 BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_reduce_early_p2p failed", bkpap_rsa_allreduce_exit);
-                BKPAP_OUTPUT("RSA_REDUCE_EARLY_DONE: round: %d, arrival: %d, exchange_rank: %d, sample: (%.2f)",
-                    round, arrival, exchange_rank, ((float*)recv_ptr)[0]);
+                BKPAP_OUTPUT("RSA_REDUCE_EARLY_DONE: round: %d, arrival: %d, exchange_rank: %d",
+                    round, arrival, exchange_rank);
 
                 ex_rank_array[round] = exchange_rank;
             }
@@ -190,15 +190,15 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
                 }
                 ex_rank_array[round] = exchange_rank;
                 BK_RSA_MAKE_TAG(tag, tag_mask, num_rounds, round, 0);
-                BKPAP_OUTPUT("RSA_REDUCE_LATE: round: %d, arrival: %d, exchange_rank: %d, send_idx: %d, send_count: %d, recv_idx: %d, recv_count: %d, sample: (%.2f)",
-                    round, arrival, exchange_rank, send_idx[round], send_count[round], recv_idx[round], recv_count[round], ((float*)recv_ptr)[0]);
+                BKPAP_OUTPUT("RSA_REDUCE_LATE: round: %d, arrival: %d, exchange_rank: %d, send_idx: %d, send_count: %d, recv_idx: %d, recv_count: %d",
+                    round, arrival, exchange_rank, send_idx[round], send_count[round], recv_idx[round], recv_count[round]);
                 BKPAP_PROFILE("bkpap_rsa_enter_late_exchange", inter_rank);
                 ret = mca_coll_bkpap_reduce_late_p2p(send_ptr, send_count[round], recv_ptr, recv_count[round],
                     exchange_rank, tag, tag_mask, dtype, op, inter_comm, bkpap_module);
                 BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_reduce_late_p2p failed", bkpap_rsa_allreduce_exit);
                 BKPAP_PROFILE("bkpap_rsa_leave_late_exchange", inter_rank);
-                BKPAP_OUTPUT("RSA_REDUCE_LATE_DONE: round: %d, arrival: %d, exchange_rank: %d, sample: (%.2f)",
-                    round, arrival, exchange_rank, ((float*)recv_ptr)[0]);
+                BKPAP_OUTPUT("RSA_REDUCE_LATE_DONE: round: %d, arrival: %d, exchange_rank: %d",
+                    round, arrival, exchange_rank);
 
             }
             if (round + 1 < num_rounds) {
