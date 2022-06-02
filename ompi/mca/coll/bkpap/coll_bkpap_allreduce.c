@@ -915,7 +915,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         ret = _bk_papaware_rsa_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
     case BKPAP_ALLREDUCE_BASE_RSA_GPU:
-        ret = ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(sbuf, rbuf, count, dtype, op, comm, &bkpap_module->super);
+        ret = ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(sbuf, rbuf, count, dtype, op, comm, bkpap_module);
         break;
     default:
         BKPAP_ERROR("alg %d undefined, falling back", alg);

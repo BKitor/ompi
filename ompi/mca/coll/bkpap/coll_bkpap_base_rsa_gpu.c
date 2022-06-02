@@ -12,10 +12,10 @@
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
     struct ompi_op_t *op, struct ompi_communicator_t *comm,
-    mca_coll_base_module_t *module)
+    mca_coll_bkpap_module_t *bkpap_module)
 {
     int *rindex = NULL, *rcount = NULL, *sindex = NULL, *scount = NULL;
-
+    mca_coll_base_module_t* module = &bkpap_module->super;
     int comm_size = ompi_comm_size(comm);
     int rank = ompi_comm_rank(comm);
     BKPAP_PROFILE("base_rsa_gpu_start_algorithm", rank);
@@ -40,16 +40,11 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     ompi_datatype_get_extent(dtype, &lb, &extent);
     dsize = opal_datatype_span(&dtype->super, count, &gap);
 
-    /* Temporary buffer for receiving messages */
-    // char *tmp_buf = NULL;
-    // char *tmp_buf_raw = (char *)malloc(dsize);
-    // if (NULL == tmp_buf_raw)
-    //     return OMPI_ERR_OUT_OF_RESOURCE;
-    // tmp_buf = tmp_buf_raw - gap;
     char *tmp_buf = NULL, *tmp_buf_raw = NULL;
-	int ret = bk_alloc_pbufft((void**)&tmp_buf_raw, dsize);
-    if (OMPI_SUCCESS != ret)
-        return ret;
+	// int ret = bk_alloc_pbufft((void**)&tmp_buf_raw, dsize);
+    // if (OMPI_SUCCESS != ret)
+    //     return ret;
+    tmp_buf_raw = bkpap_module->local_pbuffs.tag.buff_arr;
     tmp_buf = tmp_buf_raw - gap;
 
     if (sbuf != MPI_IN_PLACE) {
@@ -286,8 +281,8 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     BKPAP_PROFILE("base_rsa_end_phase_4", rank);
 
   cleanup_and_return:
-    if (NULL != tmp_buf_raw)
-        bk_free_pbufft(tmp_buf_raw);
+    // if (NULL != tmp_buf_raw)
+    //     bk_free_pbufft(tmp_buf_raw);
     if (NULL != rindex)
         free(rindex);
     if (NULL != sindex)
