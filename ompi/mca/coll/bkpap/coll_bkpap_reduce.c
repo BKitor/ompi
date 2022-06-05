@@ -32,9 +32,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		sendtmpbuf = (char*)recvbuf;
 	}
 
-	OPAL_OUTPUT((ompi_coll_base_framework.framework_output, "coll:base:reduce_generic count %d, msg size %ld, segsize %ld, max_requests %d",
+	BKPAP_OUTPUT("coll:base:reduce_generic count %d, msg size %ld, segsize %ld, max_requests %d",
 		original_count, (unsigned long)((ptrdiff_t)num_segments * (ptrdiff_t)segment_increment),
-		(unsigned long)segment_increment, max_outstanding_reqs));
+		(unsigned long)segment_increment, max_outstanding_reqs);
 
 	rank = ompi_comm_rank(comm);
 
@@ -312,9 +312,9 @@ error_hndl:  /* error handler */
 	if (inbuf_free[0] != NULL) free(inbuf_free[0]);
 	if (inbuf_free[1] != NULL) free(inbuf_free[1]);
 	if (accumbuf_free != NULL) free(accumbuf);
-	OPAL_OUTPUT((ompi_coll_base_framework.framework_output,
+	BKPAP_OUTPUT(
 		"ERROR_HNDL: node %d file %s line %d error %d\n",
-		rank, __FILE__, line, ret));
+		rank, __FILE__, line, ret);
 	(void)line;  // silence compiler warning
 	return ret;
 }
@@ -333,8 +333,8 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recv
 	
 	if(OPAL_UNLIKELY(1 == ompi_comm_size(comm)))return OMPI_SUCCESS;
 
-	OPAL_OUTPUT((ompi_coll_base_framework.framework_output, "coll:base:reduce_intra_binomial rank %d ss %5d",
-		ompi_comm_rank(comm), segsize));
+	BKPAP_OUTPUT("coll:base:reduce_intra_binomial rank %d ss %5d",
+		ompi_comm_rank(comm), segsize);
 
 	COLL_BASE_UPDATE_IN_ORDER_BMTREE(comm, base_module, root);
 

@@ -109,7 +109,7 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     ptrdiff_t lb, extent;
     ompi_datatype_get_extent(dtype, &lb, &extent);
 
-    BKPAP_OUTPUT("ARRIVE_AT_RSA: num_rounds: %d, data_size: 0x%lx, rbuf_ptr: [0x%p]", num_rounds, (extent * count), rbuf);
+    BKPAP_OUTPUT("ARRIVE_AT_RSA: num_rounds: %d, data_size: 0x%lx, ranks: (inter: %d, intra: %d) rbuf_ptr: [%p]", num_rounds, (extent * count), inter_rank, intra_rank, rbuf);
     if(is_inter)BKPAP_PROFILE("bkpap_rsa_start_algorithm", inter_rank);
 
     if (OPAL_UNLIKELY(num_rounds > 0 && (1 << num_rounds) != inter_size)) { // only support power of 2 world size
@@ -124,7 +124,7 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     }
 
     // intra_reduce
-    _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+    ret = _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
     BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_rsa_allreduce_exit);
     if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_reduce", inter_rank);
 
@@ -878,8 +878,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_communicator_t* ss_inter_comm = (is_multinode) ? bkpap_module->inter_comm : comm;
     struct ompi_communicator_t* ss_intra_comm = (is_multinode) ? bkpap_module->intra_comm : &ompi_mpi_comm_self.comm;
 
-    BKPAP_OUTPUT("comm rank: %d, intra rank: %d, inter rank: %d, is_multinode: %d, alg %d", ompi_comm_rank(comm),
-        ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), is_multinode, alg);
+    BKPAP_OUTPUT("comm rank: %d, intra rank: %d, inter rank: %d, counte: %d, is_multinode: %d, alg %d", ompi_comm_rank(comm),
+        ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), count, is_multinode, alg);
 
 
     // if (OPAL_UNLIKELY((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
