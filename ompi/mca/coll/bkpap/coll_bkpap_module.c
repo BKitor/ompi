@@ -1,4 +1,5 @@
 #include "coll_bkpap.h"
+#include "coll_bkpap_ucp.inl"
 #include "opal/util/show_help.h"
 
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -13,6 +14,7 @@ static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 // TODO: Fix issue of hanging on ucp_ep_destroy()
 // started after transitioning postbuf size from (postbuf_size * k) to (postbuf_size * (k-1)) 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
+	bkpap_finalize_mempool(module);
 
 	if (NULL != module->remote_syncstructure) {
 		for (int i = 0; i < module->num_syncstructures; i++) {
@@ -314,4 +316,26 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	arrival_arr_offsets_tmp = NULL;
 
 	return ret;
+}
+
+int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module, int max_bufs) {
+	bkpap_mempool_t* m = &bkpap_module->mempool;
+
+	m->buff = calloc(max_bufs, sizeof(*(m->buff)));
+	if (NULL == m->buff) {
+		return OMPI_ERR_OUT_OF_RESOURCE;
+	}
+	m->offset = -1;
+	m->partition_size = mca_coll_bkpap_component.postbuff_size;
+	m->num_partitions = max_bufs;
+	return OMPI_SUCCESS;
+}
+
+
+int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module) {
+	bkpap_mempool_t* m = &bkpap_module->mempool;
+	for (int i = 0; i < m->num_partitions; i++)
+		if (NULL != m->buff[i])bk_free_pbufft(m->buff[i]);
+	if (NULL != m->buff)free(m->buff);
+	return OMPI_SUCCESS;
 }

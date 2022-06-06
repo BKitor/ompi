@@ -190,3 +190,36 @@ static inline int bk_get_pbuff(void** buf, mca_coll_bkpap_module_t* bkpap_module
     BKPAP_OUTPUT("TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
     return ret;
 }
+
+static inline int bkpap_get_mempool(void** ptr, size_t size, mca_coll_bkpap_module_t* bkpap_module) {
+	bkpap_mempool_t* m = &bkpap_module->mempool;
+
+	m->offset += 1;
+	
+	if(OPAL_UNLIKELY(size > m->partition_size)){
+		BKPAP_ERROR("requested buffer larger than available (size: %ld, avail: %ld)", size, m->partition_size);
+		return OMPI_ERR_BAD_PARAM;
+	}
+
+	if (OPAL_UNLIKELY(m->offset >= m->num_partitions)) {
+		BKPAP_ERROR("Requested to many resources");
+		return OMPI_ERROR;
+	}
+
+	if (OPAL_UNLIKELY(NULL == m->buff[m->offset])) {
+		int ret = bk_alloc_pbufft(&m->buff[m->offset], m->partition_size);
+		if (OMPI_SUCCESS != ret) {
+			BKPAP_ERROR("bk_alloc_pbufft failed");
+			return ret;
+		}
+	}
+	
+	*ptr = m->buff[m->offset];
+	return OMPI_SUCCESS;
+}
+
+static inline int bkpap_reset_mempool(mca_coll_bkpap_module_t* bkpap_module) {
+	bkpap_mempool_t* m = &bkpap_module->mempool;
+	m->offset = -1;
+	return OMPI_SUCCESS;
+}

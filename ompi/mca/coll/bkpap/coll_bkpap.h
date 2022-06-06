@@ -133,6 +133,14 @@ typedef struct mca_coll_bkpap_local_tag_postbuf_t {
 	mca_coll_bkpap_postbuf_memory_t mem_type;
 } mca_coll_bkpap_local_tag_postbuf_t;
 
+typedef struct bkpap_mempool_t {
+	void** buff;
+	size_t partition_size;
+	int offset;
+	int num_partitions; 
+} bkpap_mempool_t;// this is getting out of hand
+
+
 typedef struct mca_coll_bkpap_module_t {
 	mca_coll_base_module_t super;
 	void* endof_super; // clever/hacky solution for memory allocation, see mca_coll_bkpap_module_construct for use, better solution migth exist
@@ -150,6 +158,8 @@ typedef struct mca_coll_bkpap_module_t {
 	int ucp_is_initialized;
 
 	ucp_ep_h* ucp_ep_arr;
+
+	bkpap_mempool_t mempool;
 
 	union {
 		mca_coll_bkpap_local_rma_postbuf_t rma;
@@ -217,7 +227,7 @@ int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dty
 int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recvbuf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module); //, uint32_t segsize, int max_outstanding_reqs);
-int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_base_module_t* module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
+int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
 
 // use in RSA alg, early is for the first process (pos<ex), and late is for the second (pos>ex)
 int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int* peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
@@ -225,6 +235,9 @@ int mca_coll_bkpap_reduce_late_p2p(void* send_buf, int send_count, void* recv_bu
 int mca_coll_bkpap_sendrecv(void* sbuf, int scount, void* rbuf, int rcount, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module, int max_bufs);
+int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);
 
 END_C_DECLS
 #endif

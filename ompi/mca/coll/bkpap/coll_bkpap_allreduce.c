@@ -85,7 +85,7 @@ static inline int _bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        return mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module); 
+        return mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module);
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");
@@ -110,7 +110,7 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     ompi_datatype_get_extent(dtype, &lb, &extent);
 
     BKPAP_OUTPUT("ARRIVE_AT_RSA: num_rounds: %d, data_size: 0x%lx, ranks: (inter: %d, intra: %d) rbuf_ptr: [%p]", num_rounds, (extent * count), inter_rank, intra_rank, rbuf);
-    if(is_inter)BKPAP_PROFILE("bkpap_rsa_start_algorithm", inter_rank);
+    if (is_inter)BKPAP_PROFILE("bkpap_rsa_start_algorithm", inter_rank);
 
     if (OPAL_UNLIKELY(num_rounds > 0 && (1 << num_rounds) != inter_size)) { // only support power of 2 world size
         BKPAP_ERROR("inter size: %d not supported (num_rounds: %d (%d))", inter_size, num_rounds, (1 << num_rounds));
@@ -242,7 +242,7 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
     if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_bcast", inter_rank);
 
 bkpap_rsa_allreduce_exit:
-    if(is_inter)BKPAP_PROFILE("bkpap_rsa_end_algorithm", inter_rank);
+    if (is_inter)BKPAP_PROFILE("bkpap_rsa_end_algorithm", inter_rank);
     if (NULL != ex_rank_array) free(ex_rank_array);
     if (NULL != send_idx) free(send_idx);
     if (NULL != recv_idx) free(recv_idx);
@@ -884,20 +884,28 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
     // if (OPAL_UNLIKELY((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
     //     || (!is_multinode && !bkpap_module->ucp_is_initialized))) {
-    if (OPAL_UNLIKELY(!bkpap_module->ucp_is_initialized && 0 == ompi_comm_rank(ss_intra_comm))) {
-        ret = mca_coll_bkpap_lazy_init_module_ucx(bkpap_module, ss_inter_comm, alg);
-        BKPAP_CHK_MPI(ret, bkpap_ar_abort);
+    // if (OPAL_UNLIKELY(!bkpap_module->ucp_is_initialized && 0 == ompi_comm_rank(ss_intra_comm))) {
+    if (OPAL_UNLIKELY(!bkpap_module->ucp_is_initialized)) {
+        if (0 == ompi_comm_rank(ss_intra_comm)) { // is internode
+            ret = mca_coll_bkpap_lazy_init_module_ucx(bkpap_module, ss_inter_comm, alg);
+            BKPAP_CHK_MPI(ret, bkpap_ar_abort);
+
 #if OPAL_ENABLE_DEBUG
-        if (0 == ompi_comm_rank(comm) && bkpap_module->num_syncstructures > 0) {
-            int64_t* arrival_arr_tmp = bkpap_module->local_syncstructure->arrival_arr_attr.address;
-            int64_t* count_arr_tmp = bkpap_module->local_syncstructure->counter_attr.address;
-            char arrival_str[128] = { '\0' };
-            _bk_fill_array_str_ld(bkpap_module->remote_syncstructure->ss_arrival_arr_len, arrival_arr_tmp, 128, arrival_str);
-            char count_str[128] = { '\0' };
-            _bk_fill_array_str_ld(bkpap_module->remote_syncstructure->ss_counter_len, count_arr_tmp, 128, count_str);
-            BKPAP_OUTPUT("SS initalized at intra %d inter %d global %d, arirval_arr: %s, count_arr: %s", ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), ompi_comm_rank(comm), arrival_str, count_str);
-        }
+            if (0 == ompi_comm_rank(comm) && bkpap_module->num_syncstructures > 0) {
+                int64_t* arrival_arr_tmp = bkpap_module->local_syncstructure->arrival_arr_attr.address;
+                int64_t* count_arr_tmp = bkpap_module->local_syncstructure->counter_attr.address;
+                char arrival_str[128] = { '\0' };
+                _bk_fill_array_str_ld(bkpap_module->remote_syncstructure->ss_arrival_arr_len, arrival_arr_tmp, 128, arrival_str);
+                char count_str[128] = { '\0' };
+                _bk_fill_array_str_ld(bkpap_module->remote_syncstructure->ss_counter_len, count_arr_tmp, 128, count_str);
+                BKPAP_OUTPUT("SS initalized at intra %d inter %d global %d, arirval_arr: %s, count_arr: %s", ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), ompi_comm_rank(comm), arrival_str, count_str);
+            }
 #endif
+
+        }
+        int npbufs = 3; // this is the max, needed for tmpbufs in intranode reduce 
+        ret = bkpap_init_mempool(bkpap_module, npbufs);
+        BKPAP_CHK_MPI(ret, bkpap_ar_abort);
         bkpap_module->ucp_is_initialized = 1;
     }
 

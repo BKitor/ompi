@@ -36,11 +36,13 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     }
 
     int err = MPI_SUCCESS;
-    ptrdiff_t lb, extent, gap = 0;
+    ptrdiff_t lb, extent, dsize, gap = 0;
     ompi_datatype_get_extent(dtype, &lb, &extent);
+    dsize = opal_datatype_span(&dtype->super, count, &gap);
 
     char* tmp_buf = NULL, * tmp_buf_raw = NULL;
-    err = bk_get_pbuff((void**)&tmp_buf_raw, bkpap_module);
+    // err = bk_get_pbuff((void**)&tmp_buf_raw, bkpap_module);
+    err = bkpap_get_mempool((void**)&tmp_buf_raw, dsize, bkpap_module);
     if (OMPI_SUCCESS != err)
         return err;
     tmp_buf = tmp_buf_raw - gap;
@@ -285,6 +287,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
 cleanup_and_return:
     // if (NULL != tmp_buf_raw)
     //     bk_free_pbufft(tmp_buf_raw);
+    bkpap_reset_mempool(bkpap_module);
     if (NULL != rindex)
         free(rindex);
     if (NULL != sindex)
