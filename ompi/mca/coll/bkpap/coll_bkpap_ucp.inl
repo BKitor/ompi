@@ -179,3 +179,14 @@ static inline ucs_status_t _bk_flush_worker(void) {
 	}
 	return status;
 }
+
+static inline int bk_get_pbuff(void** buf, mca_coll_bkpap_module_t* bkpap_module) {
+    int ret = OMPI_SUCCESS;
+    if (OPAL_UNLIKELY(NULL == bkpap_module->local_pbuffs.tag.buff_arr)) {
+        ret = bk_alloc_pbufft(&bkpap_module->local_pbuffs.tag.buff_arr, mca_coll_bkpap_component.postbuff_size);
+        BKPAP_OUTPUT("ALLOC_TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
+    }
+    *buf = bkpap_module->local_pbuffs.tag.buff_arr;
+    BKPAP_OUTPUT("TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
+    return ret;
+}

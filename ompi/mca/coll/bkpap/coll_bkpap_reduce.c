@@ -4,7 +4,10 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/pml/pml.h"
 
+// NEED (pbuft_t * msgsize) * 2
 // this is ripped from coll_base_reduce.c, and bk_gpu_op_reduce() as replaced ompi_reduce_local() 
+// count_by_segment will always == count, max_outstanding_reqs will always == 0
+// num_segments will always == 1
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count,
 	ompi_datatype_t* datatype, ompi_op_t* op,
 	int root, ompi_communicator_t* comm,
@@ -49,8 +52,8 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		if ((NULL == accumbuf) || (root != rank)) {
 			/* Allocate temporary accumulator buffer. */
 			size = opal_datatype_span(&datatype->super, original_count, &gap);
-			accumbuf_free = (char*)malloc(size);
-			if (accumbuf_free == NULL) {
+			ret = bk_alloc_pbufft((void**)&accumbuf_free, size);
+			if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 				line = __LINE__; ret = -1; goto error_hndl;
 			}
 			accumbuf = accumbuf_free - gap;
@@ -66,16 +69,16 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		}
 		/* Allocate two buffers for incoming segments */
 		real_segment_size = opal_datatype_span(&datatype->super, count_by_segment, &gap);
-		inbuf_free[0] = (char*)malloc(real_segment_size);
-		if (inbuf_free[0] == NULL) {
+		ret = bk_alloc_pbufft((void**)&inbuf_free[0], real_segment_size);
+		if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 			line = __LINE__; ret = -1; goto error_hndl;
 		}
 		inbuf[0] = inbuf_free[0] - gap;
 		/* if there is chance to overlap communication -
 		   allocate second buffer */
 		if ((num_segments > 1) || (tree->tree_nextsize > 1)) {
-			inbuf_free[1] = (char*)malloc(real_segment_size);
-			if (inbuf_free[1] == NULL) {
+			ret = bk_alloc_pbufft((void**)&inbuf_free[1], real_segment_size);
+			if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 				line = __LINE__; ret = -1; goto error_hndl;
 			}
 			inbuf[1] = inbuf_free[1] - gap;
@@ -186,9 +189,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		} /* end of for each segment */
 
 		/* clean up */
-		if (inbuf_free[0] != NULL) free(inbuf_free[0]);
-		if (inbuf_free[1] != NULL) free(inbuf_free[1]);
-		if (accumbuf_free != NULL) free(accumbuf_free);
+		if (inbuf_free[0] != NULL) bk_free_pbufft(inbuf_free[0]);
+		if (inbuf_free[1] != NULL) bk_free_pbufft(inbuf_free[1]);
+		if (accumbuf_free != NULL) bk_free_pbufft(accumbuf_free);
 	}
 
 	/* leaf nodes
@@ -309,9 +312,9 @@ error_hndl:  /* error handler */
 		}
 		ompi_coll_base_free_reqs(sreq, max_outstanding_reqs);
 	}
-	if (inbuf_free[0] != NULL) free(inbuf_free[0]);
-	if (inbuf_free[1] != NULL) free(inbuf_free[1]);
-	if (accumbuf_free != NULL) free(accumbuf);
+	if (inbuf_free[0] != NULL) bk_free_pbufft(inbuf_free[0]);
+	if (inbuf_free[1] != NULL) bk_free_pbufft(inbuf_free[1]);
+	if (accumbuf_free != NULL) bk_free_pbufft(accumbuf);
 	BKPAP_OUTPUT(
 		"ERROR_HNDL: node %d file %s line %d error %d\n",
 		rank, __FILE__, line, ret);
@@ -323,15 +326,16 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recv
 	int count, ompi_datatype_t* datatype,
 	ompi_op_t* op, int root,
 	ompi_communicator_t* comm,
-	mca_coll_bkpap_module_t* bkpap_module,
-	uint32_t segsize,
-	int max_outstanding_reqs) {
+	mca_coll_bkpap_module_t* bkpap_module) {
+
+	uint32_t segsize = 0;
+	int max_outstanding_reqs = 0;
 	int segcount = count;
 	size_t typelng;
 	mca_coll_base_module_t* base_module = &(bkpap_module->super);
 	mca_coll_base_comm_t* data = base_module->base_data;
-	
-	if(OPAL_UNLIKELY(1 == ompi_comm_size(comm)))return OMPI_SUCCESS;
+
+	if (OPAL_UNLIKELY(1 == ompi_comm_size(comm)))return OMPI_SUCCESS;
 
 	BKPAP_OUTPUT("coll:base:reduce_intra_binomial rank %d ss %5d",
 		ompi_comm_rank(comm), segsize);

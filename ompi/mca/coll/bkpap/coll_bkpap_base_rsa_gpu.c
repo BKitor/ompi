@@ -9,7 +9,6 @@
 #include <cuda_runtime.h>
 #pragma GCC diagnostic pop
 
-static inline int _bk_get_tmpbuf(void** buf_raw, mca_coll_bkpap_module_t* bkpap_module);
 
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype,
@@ -37,14 +36,13 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     }
 
     int err = MPI_SUCCESS;
-    ptrdiff_t lb, extent, dsize, gap = 0;
+    ptrdiff_t lb, extent, gap = 0;
     ompi_datatype_get_extent(dtype, &lb, &extent);
-    dsize = opal_datatype_span(&dtype->super, count, &gap);
 
     char* tmp_buf = NULL, * tmp_buf_raw = NULL;
-    int ret = _bk_get_tmpbuf((void**)&tmp_buf_raw, bkpap_module);
-    if (OMPI_SUCCESS != ret)
-        return ret;
+    err = bk_get_pbuff((void**)&tmp_buf_raw, bkpap_module);
+    if (OMPI_SUCCESS != err)
+        return err;
     tmp_buf = tmp_buf_raw - gap;
 
     if (sbuf != MPI_IN_PLACE) {
@@ -300,14 +298,3 @@ cleanup_and_return:
 }
 
 /* copied function (with appropriate renaming) ends here */
-
-static inline int _bk_get_tmpbuf(void** buf, mca_coll_bkpap_module_t* bkpap_module) {
-    int ret = OMPI_SUCCESS;
-    if (OPAL_UNLIKELY(NULL == bkpap_module->local_pbuffs.tag.buff_arr)) {
-        ret = bk_alloc_pbufft(&bkpap_module->local_pbuffs.tag.buff_arr, mca_coll_bkpap_component.postbuff_size);
-        BKPAP_OUTPUT("ALLOC_TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
-    }
-    *buf = bkpap_module->local_pbuffs.tag.buff_arr;
-    BKPAP_OUTPUT("TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
-    return ret;
-}

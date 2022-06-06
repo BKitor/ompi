@@ -37,11 +37,6 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 	ucp_params.mt_workers_shared = 0; /* we do not need mt support for context
 									 since it will be protected by worker */
 
-#if HAVE_DECL_UCP_PARAM_FIELD_ESTIMATED_NUM_PPN
-	ucp_params.estimated_num_ppn = opal_process_info.num_local_peers + 1;
-	ucp_params.field_mask |= UCP_PARAM_FIELD_ESTIMATED_NUM_PPN;
-#endif
-
 	status = ucp_init(&ucp_params, config, &mca_coll_bkpap_component.ucp_context);
 	ucp_config_release(config);
 	BKPAP_CHK_UCP(status, bkpap_init_ucp_err);

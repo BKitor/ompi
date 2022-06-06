@@ -85,7 +85,7 @@ static inline int _bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t
         break;
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
     case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        return mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module, 0, 0);
+        return mca_coll_bkpap_reduce_intra_inplace_binomial(intra_reduce_sbuf, intra_reduce_rbuf, count, dtype, op, 0, intra_comm, bkpap_module); 
         break;
     default:
         BKPAP_ERROR("Bad memory type, intra-node reduce failed");
