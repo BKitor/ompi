@@ -189,6 +189,7 @@ typedef struct mca_coll_bkpap_component_t {
 	size_t pipeline_segment_size;
 	int allreduce_k_value;
 	int allreduce_alg;
+	int force_flat;
 	int priority;
 	int verbose;
 

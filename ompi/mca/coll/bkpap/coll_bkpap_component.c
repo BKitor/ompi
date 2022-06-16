@@ -37,6 +37,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .pipeline_segment_size = BKPAP_SEGMENT_SIZE,
     .allreduce_k_value = 4,
     .allreduce_alg = BKPAP_ALLREDUCE_ALG_KTREE,
+    .force_flat = 0,
     .priority = 35,
     .verbose = 0,
     .dataplane_type = 0,
@@ -114,16 +115,21 @@ static int mca_coll_bkpap_register(void) {
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
         MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.dataplane_type);
 
+    (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
+        "force_flat", "force allreduce alg to be flat instead of hierarchical",
+        MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.force_flat);
+
     return OMPI_SUCCESS;
 }
 
-static int mca_coll_bkpap_open(void){
+static int mca_coll_bkpap_open(void) {
     mca_coll_bkpap_output = opal_output_open(NULL);
     opal_output_set_verbosity(mca_coll_bkpap_output, mca_coll_bkpap_component.verbose);
     // TODO: Init UCX here?
     return OMPI_SUCCESS;
 }
-static int mca_coll_bkpap_close(void){
+static int mca_coll_bkpap_close(void) {
     // TODO: Close UCX here?
     return OMPI_SUCCESS;
 }

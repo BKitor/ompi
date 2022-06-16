@@ -238,7 +238,6 @@ static inline int _bk_papaware_rsa_allreduce(const void* sbuf, void* rbuf, int c
         intra_comm,
         intra_comm->c_coll->coll_bcast_module);
     BKPAP_CHK_MPI_MSG_LBL(ret, "intra-stage bcast failed", bkpap_rsa_allreduce_exit);
-
     if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_bcast", inter_rank);
 
 bkpap_rsa_allreduce_exit:
@@ -874,7 +873,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     int global_rank = ompi_comm_rank(comm);
     int intra_wsize = ompi_comm_size(bkpap_module->intra_comm);
 
-    int is_multinode = intra_wsize < global_wsize;
+    int is_multinode = (mca_coll_bkpap_component.force_flat) ? 0 : intra_wsize < global_wsize;
     struct ompi_communicator_t* ss_inter_comm = (is_multinode) ? bkpap_module->inter_comm : comm;
     struct ompi_communicator_t* ss_intra_comm = (is_multinode) ? bkpap_module->intra_comm : &ompi_mpi_comm_self.comm;
 
