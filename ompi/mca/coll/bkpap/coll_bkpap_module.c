@@ -339,3 +339,27 @@ int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module) {
 	if (NULL != m->buff)free(m->buff);
 	return OMPI_SUCCESS;
 }
+
+// returns error if runs out of space
+int bk_fill_array_str_ld(size_t arr_len, int64_t* arr, size_t str_limit, char* out_str) {
+    if (str_limit < 3) return OMPI_ERROR;
+    char tmp[16] = { "\0" };
+    *out_str = '\0';
+    strcat(out_str, "[");
+    for (size_t i = 0; i < arr_len; i++) {
+        if (i == 0)
+            sprintf(tmp, " %ld", arr[i]);
+        else
+            sprintf(tmp, ", %ld", arr[i]);
+
+        if (strlen(tmp) > (str_limit - strlen(out_str)))
+            return OMPI_ERROR;
+
+        strcat(out_str, tmp);
+    }
+
+    if (strlen(out_str) > (str_limit + 1))
+        return OMPI_ERROR;
+    strcat(out_str, " ]");
+    return OMPI_SUCCESS;
+}

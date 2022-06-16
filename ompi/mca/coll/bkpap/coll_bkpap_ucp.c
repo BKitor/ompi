@@ -289,9 +289,9 @@ int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t 
 		ucp_request_free(status_ptr);
 		return OMPI_ERROR;
 	}
-	status = _bk_poll_completion(status_ptr);
+	status = bk_poll_ucs_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
-		BKPAP_ERROR("_bk_poll_completion failed code: %d, (%s)", status, ucs_status_string(status));
+		BKPAP_ERROR("bk_poll_ucs_completion failed code: %d, (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
 	}
 
@@ -301,9 +301,9 @@ int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t 
 		module->ucp_ep_arr[0], &put_buf, sizeof(put_buf),
 		put_addr, remote_ss->arrival_arr_rkey, &req_params);
 
-	status = _bk_poll_completion(status_ptr);
+	status = bk_poll_ucs_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
-		BKPAP_ERROR("_bk_poll_completion failed code: %d, (%s)", status, ucs_status_string(status));
+		BKPAP_ERROR("bk_poll_ucs_completion failed code: %d, (%s)", status, ucs_status_string(status));
 		return OMPI_ERROR;
 	}
 
@@ -325,7 +325,7 @@ int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_c
 
 	int64_t op_buffer = -1;
 	status_ptr = ucp_atomic_op_nbx(module->ucp_ep_arr[0], UCP_ATOMIC_OP_ADD, &op_buffer, 1, remote_ss->counter_addr, remote_ss->counter_rkey, &req_params);
-	status = _bk_poll_completion(status_ptr);
+	status = bk_poll_ucs_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("_poll_completoin of leave atomic failed");
 		return OMPI_ERROR;
@@ -358,7 +358,7 @@ int mca_coll_bkpap_get_rank_of_arrival(int arrival, uint64_t arrival_round_offse
 		remote_ss->arrival_arr_rkey,
 		&req_params);
 
-	status = _bk_poll_completion(status_ptr);
+	status = bk_poll_ucs_completion(status_ptr);
 	if (UCS_OK != status) {
 		BKPAP_ERROR("poll completion on get_rank_of_arrival failed");
 		return OMPI_ERROR;
@@ -395,7 +395,7 @@ int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss
 		(remote_ss->ss_counter_len * sizeof(int64_t)), remote_ss->counter_addr, remote_ss->counter_rkey,
 		&req_params);
 
-	status = _bk_poll_all_completion(status_ptr, 2);
+	status = bk_poll_all_ucs_completion(status_ptr, 2);
 	if (UCS_OK != status) {
 		BKPAP_ERROR("Flush failed");
 		return OMPI_ERROR;

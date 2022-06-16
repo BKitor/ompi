@@ -134,7 +134,7 @@ static inline int mca_coll_bkpap_send_dataplane(const void* buf, struct ompi_dat
 }
 
 
-static inline ucs_status_t _bk_poll_completion(ucs_status_ptr_t status_ptr) {
+static inline ucs_status_t bk_poll_ucs_completion(ucs_status_ptr_t status_ptr) {
 	if (UCS_OK == status_ptr) {
 		return UCS_OK;
 	}
@@ -158,10 +158,10 @@ static inline ucs_status_t _bk_poll_completion(ucs_status_ptr_t status_ptr) {
 	return status;
 }
 
-static inline ucs_status_t _bk_poll_all_completion(ucs_status_ptr_t* status_ptr_array, int len) {
+static inline ucs_status_t bk_poll_all_ucs_completion(ucs_status_ptr_t* status_ptr_array, int len) {
 	ucs_status_t s = UCS_OK;
 	for (int i = 0; i < len; i++) {
-		if (UCS_OK != (s = _bk_poll_completion(status_ptr_array[i]))) {
+		if (UCS_OK != (s = bk_poll_ucs_completion(status_ptr_array[i]))) {
 			BKPAP_ERROR("UCS error in poll_all_completion: %d (%s)", s, ucs_status_string(s));
 			return s;
 		}
@@ -169,57 +169,23 @@ static inline ucs_status_t _bk_poll_all_completion(ucs_status_ptr_t* status_ptr_
 	return s;
 }
 
-static inline ucs_status_t _bk_flush_worker(void) {
+static inline ucs_status_t bk_flush_ucp_worker(void) {
 	ucs_status_ptr_t status_ptr = NULL;
 	ucs_status_t status;
 	status_ptr = ucp_worker_flush_nb(mca_coll_bkpap_component.ucp_worker, 0, _bk_send_cb_noparams);
-	status = _bk_poll_completion(status_ptr);
+	status = bk_poll_ucs_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("UCS error in poll_completion: %d (%s)", status, ucs_status_string(status));
 	}
 	return status;
 }
 
-static inline int bk_get_pbuff(void** buf, mca_coll_bkpap_module_t* bkpap_module) {
-    int ret = OMPI_SUCCESS;
-    if (OPAL_UNLIKELY(NULL == bkpap_module->local_pbuffs.tag.buff_arr)) {
-        ret = bk_alloc_pbufft(&bkpap_module->local_pbuffs.tag.buff_arr, mca_coll_bkpap_component.postbuff_size);
-        BKPAP_OUTPUT("ALLOC_TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
+static inline int bk_ompi_request_wait_all(ompi_request_t** request_arr, int req_arr_len) {
+    int tmp_is_completed;
+    ompi_request_test_all(req_arr_len, request_arr, &tmp_is_completed, MPI_STATUSES_IGNORE);
+    while (!tmp_is_completed) {
+        ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+        ompi_request_test_all(req_arr_len, request_arr, &tmp_is_completed, MPI_STATUSES_IGNORE);
     }
-    *buf = bkpap_module->local_pbuffs.tag.buff_arr;
-    BKPAP_OUTPUT("TMP_BUF: %p", bkpap_module->local_pbuffs.tag.buff_arr);
-    return ret;
-}
-
-static inline int bkpap_get_mempool(void** ptr, size_t size, mca_coll_bkpap_module_t* bkpap_module) {
-	bkpap_mempool_t* m = &bkpap_module->mempool;
-
-	m->offset += 1;
-	
-	if(OPAL_UNLIKELY(size > m->partition_size)){
-		BKPAP_ERROR("requested buffer larger than available (size: %ld, avail: %ld)", size, m->partition_size);
-		return OMPI_ERR_BAD_PARAM;
-	}
-
-	if (OPAL_UNLIKELY(m->offset >= m->num_partitions)) {
-		BKPAP_ERROR("Requested to many resources");
-		return OMPI_ERROR;
-	}
-
-	if (OPAL_UNLIKELY(NULL == m->buff[m->offset])) {
-		int ret = bk_alloc_pbufft(&m->buff[m->offset], m->partition_size);
-		if (OMPI_SUCCESS != ret) {
-			BKPAP_ERROR("bk_alloc_pbufft failed");
-			return ret;
-		}
-	}
-	
-	*ptr = m->buff[m->offset];
-	return OMPI_SUCCESS;
-}
-
-static inline int bkpap_reset_mempool(mca_coll_bkpap_module_t* bkpap_module) {
-	bkpap_mempool_t* m = &bkpap_module->mempool;
-	m->offset = -1;
-	return OMPI_SUCCESS;
+    return OMPI_SUCCESS;
 }

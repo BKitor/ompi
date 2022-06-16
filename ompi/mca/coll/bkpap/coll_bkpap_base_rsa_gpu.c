@@ -1,5 +1,6 @@
 #include "coll_bkpap.h"
 #include "coll_bkpap_ucp.inl"
+#include "coll_bkpap_util.inl"
 #include "opal/util/bit_ops.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/coll/base/coll_base_util.h"

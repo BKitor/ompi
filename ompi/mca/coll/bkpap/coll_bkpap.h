@@ -133,11 +133,11 @@ typedef struct mca_coll_bkpap_local_tag_postbuf_t {
 	mca_coll_bkpap_postbuf_memory_t mem_type;
 } mca_coll_bkpap_local_tag_postbuf_t;
 
-typedef struct bkpap_mempool_t {
+typedef struct bkpap_mempool {
 	void** buff;
 	size_t partition_size;
 	int offset;
-	int num_partitions; 
+	int num_partitions;
 } bkpap_mempool_t;// this is getting out of hand
 
 
@@ -206,6 +206,8 @@ typedef struct mca_coll_bkpap_req_t {
 	int complete;
 } mca_coll_bkpap_req_t;
 
+int bk_fill_array_str_ld(size_t arr_len, int64_t* arr, size_t str_limit, char* out_str);
+
 void mca_coll_bkpap_req_init(void* request);
 
 int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, struct ompi_communicator_t* comm, int alg);
@@ -235,6 +237,9 @@ int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_b
 int mca_coll_bkpap_reduce_late_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_sendrecv(void* sbuf, int scount, void* rbuf, int rcount, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
+int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
+int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
+int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module, int max_bufs);

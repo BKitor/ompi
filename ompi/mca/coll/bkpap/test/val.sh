@@ -86,22 +86,22 @@ bk_exp_out() {
 bk_val_cond_tst() {
 	if [ "$1" == "1" ]; then
 		bk_exp_out
-		mpicc -o ar_val.out ar_val.c -Wall &&
+		mpicc -o test/ar_val.out test/ar_val.c -Wall &&
 			mpirun -n $BK_NUM_PROC \
 				--display bind \
 				--map-by core \
-				./ar_val.out
+				./test/ar_val.out
 	fi
 }
 
 bk_val_cu_cond_tst() {
 	if [ "$1" == "1" ]; then
 		bk_exp_out
-		mpicc -o ar_val_cu.out ar_val_cu.c -Wall -lcuda -lcudart &&
+		mpicc -o test/ar_val_cu.out test/ar_val_cu.c -Wall -lcuda -lcudart &&
 			mpirun -n $BK_NUM_PROC \
 				--display bind \
 				--map-by core \
-				./ar_val_cu.out
+				./test/ar_val_cu.out
 	fi
 }
 

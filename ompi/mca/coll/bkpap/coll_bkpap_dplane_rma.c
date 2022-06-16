@@ -248,7 +248,8 @@ int mca_coll_bkpap_rma_send_postbuf(const void* buf,
 		ucp_request_free(status_ptr);
 	}
 
-	status = _bk_flush_worker();
+	// TODO: should remove this, worker flush gets funky and can hang
+	status = bk_flush_ucp_worker();
 	if (UCS_OK != status) {
 		BKPAP_ERROR("Worker Flush Failed");
 		return OMPI_ERROR;

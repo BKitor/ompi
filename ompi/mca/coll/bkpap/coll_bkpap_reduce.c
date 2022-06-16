@@ -1,5 +1,6 @@
 #include "coll_bkpap.h"
 #include "coll_bkpap_ucp.inl"
+#include "coll_bkpap_util.inl"
 #include "bkpap_kernel.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/pml/pml.h"

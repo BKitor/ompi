@@ -84,7 +84,7 @@ int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dty
 		BKPAP_ERROR("rank: %d, dest: %d, send error %d(%s)", ompi_comm_rank(comm), dest, status, ucs_status_string(status));
 		return OMPI_ERROR;
 	}
-	status = _bk_poll_completion(status_ptr);
+	status = bk_poll_ucs_completion(status_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("_poll_completoin of tag_send failed");
 		return OMPI_ERROR;
@@ -124,7 +124,7 @@ int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* 
 			BKPAP_ERROR("rank: %d, i: %d, recv error %d(%s)", ompi_comm_rank(comm), i, status, ucs_status_string(status));
 			return OMPI_ERROR;
 		}
-		status = _bk_poll_completion(status_ptr);
+		status = bk_poll_ucs_completion(status_ptr);
 		if (OPAL_UNLIKELY(UCS_OK != status)) {
 			BKPAP_ERROR("poll completion failed");
 			return OMPI_ERROR;
@@ -161,7 +161,7 @@ int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_b
 	recv_params.memory_type = mca_coll_bkpap_component.ucs_postbuf_memory_type;
 	data_req_array[0] = ucp_tag_recv_nbx(w, tmp_recv_buf, recv_byte_count, data_recv_tag, tag_mask, &recv_params); // recv data
 
-	status = _bk_poll_completion(rank_recv_req);
+	status = bk_poll_ucs_completion(rank_recv_req);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("error in early p2p poll_completion: %d (%s)", status, ucs_status_string(status));
 		return status;
@@ -172,7 +172,7 @@ int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_b
 	data_req_array[1] = ucp_tag_send_nbx(peer_ep, send_buf, send_byte_count, data_send_tag, &send_params); // send data
 
 	BKPAP_PROFILE("dplane_tag_early_p2p_wait_start", ompi_comm_rank(comm));
-	status = _bk_poll_all_completion(data_req_array, 2);
+	status = bk_poll_all_ucs_completion(data_req_array, 2);
 	BKPAP_PROFILE("dplane_tag_early_p2p_wait_end", ompi_comm_rank(comm));
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("error in early p2p poll_all_completion: %d (%s)", status, ucs_status_string(status));
@@ -211,7 +211,7 @@ int mca_coll_bkpap_reduce_late_p2p(void* send_buf, int send_count, void* recv_bu
 	status_array[2] = ucp_tag_recv_nbx(w, tmp_recv_buf, recv_byte_count, data_recv_tag, tag_mask, &recv_params); // recv data
 
 	BKPAP_PROFILE("dplane_tag_late_p2p_wait_start", ompi_comm_rank(comm));
-	status = _bk_poll_all_completion(status_array, 3);
+	status = bk_poll_all_ucs_completion(status_array, 3);
 	BKPAP_PROFILE("dplane_tag_late_p2p_wait_end", ompi_comm_rank(comm));
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("error in sendrecv_poll_all: %d (%s)", status, ucs_status_string(status));
@@ -238,7 +238,7 @@ int mca_coll_bkpap_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_cou
 
 	status_array[0] = ucp_tag_send_nbx(peer_ep, sbuf, send_size, tag_tmp, &send_params); // send data
 	status_array[1] = ucp_tag_recv_nbx(w, rbuf, recv_size, tag_tmp, tag_mask, &recv_params); // recv data
-	status = _bk_poll_all_completion(status_array, 2);
+	status = bk_poll_all_ucs_completion(status_array, 2);
 	if (OPAL_UNLIKELY(UCS_OK != status)) {
 		BKPAP_ERROR("error in sendrecv_poll_all: %d (%s)", status, ucs_status_string(status));
 	}

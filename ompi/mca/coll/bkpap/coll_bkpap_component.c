@@ -40,7 +40,7 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .force_flat = 0,
     .priority = 35,
     .verbose = 0,
-    .dataplane_type = 0,
+    .dataplane_type = BKPAP_DATAPLANE_TAG,
     .bk_postbuf_memory_type = BKPAP_POSTBUF_MEMORY_TYPE_HOST,
     .ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST
 };
