@@ -258,8 +258,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 #endif
 
         }
-        int npbufs = 3; // this is the max, needed for tmpbufs in intranode reduce 
-        ret = bkpap_init_mempool(bkpap_module, npbufs);
+        ret = bkpap_init_mempool(bkpap_module);
         BKPAP_CHK_MPI(ret, bkpap_ar_abort);
         bkpap_module->ucp_is_initialized = 1;
     }
@@ -288,6 +287,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     BKPAP_CHK_MPI(ret, bkpap_ar_abort);
 
     BKPAP_OUTPUT("rank: %d COMPLETE BKPAP ALLREDUCE", global_rank);
+    bk_mempool_trim(bkpap_module);
     return ret;
 
 bkpap_ar_abort:

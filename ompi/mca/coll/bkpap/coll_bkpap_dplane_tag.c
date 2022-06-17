@@ -43,7 +43,7 @@ int mca_coll_bkpap_tag_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 	size_t mapped_postbuf_size = mca_coll_bkpap_component.postbuff_size * num_postbufs;
 	void* mapped_postbuf = NULL;
 	
-	bk_alloc_pbufft(&mapped_postbuf, mapped_postbuf_size);
+	bk_alloc_pbufft(&mapped_postbuf, mapped_postbuf_size, mca_coll_bkpap_component.bk_postbuf_memory_type);
 
 	tag_postbuf->buff_arr = mapped_postbuf;
 	tag_postbuf->num_buffs = num_postbufs;

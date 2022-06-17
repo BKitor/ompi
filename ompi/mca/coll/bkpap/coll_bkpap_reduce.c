@@ -54,8 +54,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		if ((NULL == accumbuf) || (root != rank)) {
 			/* Allocate temporary accumulator buffer. */
 			size = opal_datatype_span(&datatype->super, original_count, &gap);
-			// ret = bk_alloc_pbufft((void**)&accumbuf_free, size);
-			ret = bkpap_get_mempool((void**)&accumbuf_free, size, bkpap_module);
+			ret = bkpap_mempool_alloc((void**)&accumbuf_free, size, bkpap_module);
 			if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 				line = __LINE__; ret = -1; goto error_hndl;
 			}
@@ -72,7 +71,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		}
 		/* Allocate two buffers for incoming segments */
 		real_segment_size = opal_datatype_span(&datatype->super, count_by_segment, &gap);
-		ret = bkpap_get_mempool((void**)&inbuf_free[0], real_segment_size, bkpap_module);
+		ret = bkpap_mempool_alloc((void**)&inbuf_free[0], real_segment_size, bkpap_module);
 		if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 			line = __LINE__; ret = -1; goto error_hndl;
 		}
@@ -80,7 +79,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		/* if there is chance to overlap communication -
 		   allocate second buffer */
 		if ((num_segments > 1) || (tree->tree_nextsize > 1)) {
-			ret = bkpap_get_mempool((void**)&inbuf_free[1], real_segment_size, bkpap_module);
+			ret = bkpap_mempool_alloc((void**)&inbuf_free[1], real_segment_size, bkpap_module);
 			if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 				line = __LINE__; ret = -1; goto error_hndl;
 			}
@@ -192,10 +191,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		} /* end of for each segment */
 
 		/* clean up */
-		// if (inbuf_free[0] != NULL) bk_free_pbufft(inbuf_free[0]);
-		// if (inbuf_free[1] != NULL) bk_free_pbufft(inbuf_free[1]);
-		// if (accumbuf_free != NULL) bk_free_pbufft(accumbuf_free);
-		bkpap_reset_mempool(bkpap_module);
+		if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bkpap_module);
+		if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bkpap_module);
+		if (accumbuf_free != NULL) bk_mempool_free(accumbuf_free, bkpap_module);
 	}
 
 	/* leaf nodes
@@ -316,10 +314,9 @@ error_hndl:  /* error handler */
 		}
 		ompi_coll_base_free_reqs(sreq, max_outstanding_reqs);
 	}
-	// if (inbuf_free[0] != NULL) bk_free_pbufft(inbuf_free[0]);
-	// if (inbuf_free[1] != NULL) bk_free_pbufft(inbuf_free[1]);
-	// if (accumbuf_free != NULL) bk_free_pbufft(accumbuf);
-	bkpap_reset_mempool(bkpap_module);
+	if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bkpap_module);
+	if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bkpap_module);
+	if (accumbuf_free != NULL) bk_mempool_free(accumbuf, bkpap_module);
 	BKPAP_OUTPUT(
 		"ERROR_HNDL: node %d file %s line %d error %d\n",
 		rank, __FILE__, line, ret);

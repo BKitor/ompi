@@ -133,12 +133,18 @@ typedef struct mca_coll_bkpap_local_tag_postbuf_t {
 	mca_coll_bkpap_postbuf_memory_t mem_type;
 } mca_coll_bkpap_local_tag_postbuf_t;
 
+typedef struct bkpap_mempool_buf {
+	void* buf;
+	struct bkpap_mempool_buf* next;
+	size_t size;
+	int num_passes;
+	bool allocated;
+}bkpap_mempool_buf_t;
+
 typedef struct bkpap_mempool {
-	void** buff;
-	size_t partition_size;
-	int offset;
-	int num_partitions;
-} bkpap_mempool_t;// this is getting out of hand
+	bkpap_mempool_buf_t* head;
+	mca_coll_bkpap_postbuf_memory_t memtype;
+} bkpap_mempool_t;
 
 
 typedef struct mca_coll_bkpap_module_t {
@@ -242,7 +248,7 @@ int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, 
 int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module, int max_bufs);
+int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module);
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);
 
 END_C_DECLS

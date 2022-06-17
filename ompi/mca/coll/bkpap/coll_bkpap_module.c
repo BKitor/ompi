@@ -1,5 +1,6 @@
 #include "coll_bkpap.h"
 #include "coll_bkpap_ucp.inl"
+#include "coll_bkpap_util.inl"
 #include "opal/util/show_help.h"
 
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -318,25 +319,23 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	return ret;
 }
 
-int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module, int max_bufs) {
+int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module) {
 	bkpap_mempool_t* m = &bkpap_module->mempool;
-
-	m->buff = calloc(max_bufs, sizeof(*(m->buff)));
-	if (NULL == m->buff) {
-		return OMPI_ERR_OUT_OF_RESOURCE;
-	}
-	m->offset = -1;
-	m->partition_size = mca_coll_bkpap_component.postbuff_size;
-	m->num_partitions = max_bufs;
+	m->head = NULL; 
+	m->memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
 	return OMPI_SUCCESS;
 }
 
-
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module) {
 	bkpap_mempool_t* m = &bkpap_module->mempool;
-	for (int i = 0; i < m->num_partitions; i++)
-		if (NULL != m->buff[i])bk_free_pbufft(m->buff[i]);
-	if (NULL != m->buff)free(m->buff);
+	bkpap_mempool_buf_t* b = m->head;
+	while(NULL != b){
+		bkpap_mempool_buf_t* bn = b->next;
+		if(b->allocated)
+			BKPAP_ERROR("Freeing mempoolbuf marked allocated, migh havem mem-leak");
+		bkpap_mempool_destroy_buf(b, m);
+		b = bn;
+	}
 	return OMPI_SUCCESS;
 }
 

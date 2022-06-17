@@ -15,8 +15,7 @@ static void _bk_send_cb_noparams(void* request, ucs_status_t status) {
 	_bk_send_cb(request, status, NULL);
 }
 
-static inline int bk_alloc_pbufft(void** out_ptr, size_t len){
-	int memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+static inline int bk_alloc_pbufft(void** out_ptr, size_t len, mca_coll_bkpap_postbuf_memory_t memtype){
 	int ret = OMPI_SUCCESS;
 	switch (memtype){
 	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
@@ -48,8 +47,7 @@ static inline int bk_alloc_pbufft(void** out_ptr, size_t len){
 	return ret;
 }
 
-static inline void bk_free_pbufft(void* ptr){
-	int memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+static inline void bk_free_pbufft(void* ptr,mca_coll_bkpap_postbuf_memory_t memtype){
 	switch (memtype){
 	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
 		free(ptr);
