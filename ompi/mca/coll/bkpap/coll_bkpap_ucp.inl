@@ -1,9 +1,5 @@
 #include "coll_bkpap.h"
 
-#pragma GCC diagnostic ignored "-Wpedantic"
-#include <cuda.h>
-#include <cuda_runtime.h>
-#pragma GCC diagnostic pop
 
 static void _bk_send_cb(void* request, ucs_status_t status, void* args) {
 	mca_coll_bkpap_req_t* req = request;
@@ -15,52 +11,6 @@ static void _bk_send_cb_noparams(void* request, ucs_status_t status) {
 	_bk_send_cb(request, status, NULL);
 }
 
-static inline int bk_alloc_pbufft(void** out_ptr, size_t len, mca_coll_bkpap_postbuf_memory_t memtype){
-	int ret = OMPI_SUCCESS;
-	switch (memtype){
-	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-		*out_ptr = malloc(len);
-		if (OPAL_UNLIKELY(NULL == *out_ptr)){
-			BKPAP_ERROR("bk_alloc_pbufft malloc returned null");
-			ret = OMPI_ERR_OUT_OF_RESOURCE;
-		}
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-		ret = cudaMalloc(out_ptr, len);
-		if (OPAL_UNLIKELY(cudaSuccess != ret)){
-			BKPAP_ERROR("bk_alloc_pbufft cudaMalloc failed errocde %d", ret);
-			ret = OMPI_ERROR;
-		}
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-		ret = cudaMallocManaged(out_ptr, len, cudaMemAttachGlobal);
-		if (OPAL_UNLIKELY(cudaSuccess != ret)){
-			BKPAP_ERROR("bk_alloc_pbufft cudaMalloc failed errocde %d", ret);
-			ret = OMPI_ERROR;
-		}
-		break;
-	default:
-		BKPAP_ERROR("bk_alloc_pbufft bad mem type %d", memtype);
-		ret = OMPI_ERROR;
-		break;
-	}
-	return ret;
-}
-
-static inline void bk_free_pbufft(void* ptr,mca_coll_bkpap_postbuf_memory_t memtype){
-	switch (memtype){
-	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-		free(ptr);
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-		cudaFree(ptr);
-		break;
-	default:
-		BKPAP_ERROR("bk_alloc_pbufft bad mem type %d", memtype);
-		break;
-	}
-}
 
 static inline int bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, size_t full_count, ompi_datatype_t* dtype) {
 	if (OPAL_LIKELY(MPI_FLOAT == dtype && MPI_SUM == op)) { // is sum float

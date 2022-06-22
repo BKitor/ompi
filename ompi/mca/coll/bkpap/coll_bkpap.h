@@ -49,6 +49,17 @@ BEGIN_C_DECLS
 #define BK_RSA_SET_TAG_TYPE_DATA(_tag) (_tag | 1ul)
 #define BK_RSA_SET_TAG_TYPE_RANK(_tag) (_tag & ~(1ul))
 
+/* Binomial tag format:
+ * | 63 --- 2 |   1    |     0     |
+ * |   child  | RED/BC | data/rank |
+ * |   rank   |  phase |    type   |
+*/
+#define BK_BINOMIAL_MAKE_TAG(_val, _phase, _tag, _tag_mask) { \
+	_tag_mask = 0xfffful; \
+	_tag = ((uint64_t)(_val)<<2) | ((uint64_t)(_phase) << 1); \
+	}
+#define BK_BINOMIAL_TAG_SET_DATA(_tag) (_tag | 1ul)
+#define BK_BINOMIAL_TAG_SET_RANK(_tag) (_tag & ~(1ul))
 extern int mca_coll_bkpap_output;
 
 enum mca_coll_bkpap_dbell_state {
@@ -62,6 +73,7 @@ typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE = 2,
 	BKPAP_ALLREDUCE_ALG_RSA = 3,
 	BKPAP_ALLREDUCE_BASE_RSA_GPU = 4,
+	BKPAP_ALLREDUCE_ALG_BINOMIAL = 5,
 	BKPAP_ALLREDUCE_ALG_COUNT
 } mca_coll_bkpap_allreduce_algs_t;
 
@@ -239,14 +251,21 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recv
 int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
 
 // use in RSA alg, early is for the first process (pos<ex), and late is for the second (pos>ex)
-int mca_coll_bkpap_reduce_early_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int* peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_reduce_late_p2p(void* send_buf, int send_count, void* recv_buf, int recv_count, int peer_rank, int64_t tag, int64_t tag_mask, struct ompi_datatype_t* dtype, ompi_op_t* op, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int mca_coll_bkpap_sendrecv(void* sbuf, int scount, void* rbuf, int rcount, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+// this should be a more finalized set of communication primatives
+int mca_coll_bkpap_dplane_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_dplane_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_dplane_recv_from_early(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_dplane_recv_from_late(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_dplane_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_dplane_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module);
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);

@@ -69,7 +69,7 @@ int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rb
             }
 
             BKPAP_OUTPUT("INTRA_REDUCE_SEGMENT: seg_index: %d, rank: %d, count: %d, red_buf: [0x%p]", seg_index, inter_rank, seg_iter_count, (void*)seg_buf);
-            ret = _bk_intra_reduce(seg_buf, seg_iter_count, dtype, op, intra_comm, bkpap_module);
+            ret = bk_intra_reduce(seg_buf, seg_iter_count, dtype, op, intra_comm, bkpap_module);
             BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_fullpipe_allreduce_exit);
             BKPAP_PROFILE("finish_intra_reduce_seg", inter_rank);
 
@@ -190,7 +190,7 @@ int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rb
         ompi_request_t* bc_req = MPI_REQUEST_NULL;
 
         // start first pipeline segment
-        ret = _bk_intra_reduce(red_buf, red_count, dtype, op, intra_comm, bkpap_module);
+        ret = bk_intra_reduce(red_buf, red_count, dtype, op, intra_comm, bkpap_module);
         BKPAP_CHK_MPI_MSG_LBL(ret, "non-leader intra-node reduce failed", bkpap_fullpipe_allreduce_exit);
         red_buf += real_seg_size;
 
@@ -205,7 +205,7 @@ int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rb
                 bc_buf, bc_count, dtype, 0, intra_comm, &bc_req,
                 intra_comm->c_coll->coll_ibcast_module);
             BKPAP_CHK_MPI_MSG_LBL(ret, "non-leader intra-node ibcast failed", bkpap_fullpipe_allreduce_exit);
-            ret = _bk_intra_reduce(red_buf, red_count, dtype, op, intra_comm, bkpap_module);
+            ret = bk_intra_reduce(red_buf, red_count, dtype, op, intra_comm, bkpap_module);
             BKPAP_CHK_MPI_MSG_LBL(ret, "non-leader intra-node reduce failed", bkpap_fullpipe_allreduce_exit);
 
             ret = ompi_request_wait(&bc_req, MPI_STATUS_IGNORE);
@@ -255,7 +255,7 @@ int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, 
     if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("ktree_pipeline_arrive", inter_rank);
 
 
-    ret = _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+    ret = bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
     BKPAP_CHK_MPI_MSG_LBL(ret, "intra-node reduce failed", bkpap_pipeline_allreduce_exit);
 
     if (OPAL_LIKELY(is_inter))BKPAP_PROFILE("finish_intra_reduce", inter_rank);
@@ -458,7 +458,7 @@ int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count,
     if (is_inter)BKPAP_PROFILE("arrive_at_ktree", inter_rank);
 
 
-    ret = _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+    ret = bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
     BKPAP_CHK_MPI_MSG_LBL(ret, "intra-node reduce failed", bkpap_ktree_allreduce_exit);
 
     if (is_inter) {

@@ -47,7 +47,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
     }
 
     // intra_reduce
-    ret = _bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+    ret = bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
     BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_rsa_allreduce_exit);
     if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_reduce", inter_rank);
 
@@ -70,6 +70,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
             goto bkpap_rsa_allreduce_exit;
         }
         BKPAP_PROFILE("bkpap_rsa_aloc_tmp_bff", inter_rank);
+        memset(ex_rank_array, -1, sizeof(*ex_rank_array) * num_rounds);
 
         send_idx[0] = recv_idx[0] = 0;
         int round, win_count = count;
@@ -85,20 +86,20 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
                 send_idx[round] = recv_idx[round] + recv_count[round];
                 void* send_ptr = (int8_t*)rbuf + ((ptrdiff_t)send_idx[round] * extent);
                 void* recv_ptr = (int8_t*)rbuf + ((ptrdiff_t)recv_idx[round] * extent);
+                void* recv_tmp = bkpap_module->local_pbuffs.tag.buff_arr; // TODO: replace with mempool
 
                 BK_RSA_MAKE_TAG(tag, tag_mask, num_rounds, round, 0);
                 BKPAP_OUTPUT("RSA_REDUCE_EARLY: round: %d, arrival: %d, send_idx: %d, send_count: %d, recv_idx: %d, recv_count: %d",
                     round, arrival, send_idx[round], send_count[round], recv_idx[round], recv_count[round]);
-                BKPAP_PROFILE("bkpap_rsa_enter_early_exchange", inter_rank);
-                ret = mca_coll_bkpap_reduce_early_p2p(send_ptr, send_count[round], recv_ptr, recv_count[round],
-                    &exchange_rank, tag, tag_mask, dtype, op, inter_comm, bkpap_module);
-                BKPAP_PROFILE("bkpap_rsa_leave_early_exchange", inter_rank);
+                ret = mca_coll_bkpap_dplane_sendrecv_from_late(send_ptr, send_count[round], recv_tmp, recv_count[round],
+                    dtype, tag, tag_mask, inter_comm, bkpap_module);
+                BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_dplane_sendrecv_from_late failed", bkpap_rsa_allreduce_exit);
+                ret = mca_coll_bkpap_reduce_local(op, recv_tmp, recv_ptr, recv_count[round], dtype);
+                BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_reduce_local failed", bkpap_rsa_allreduce_exit);
 
-                BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_reduce_early_p2p failed", bkpap_rsa_allreduce_exit);
                 BKPAP_OUTPUT("RSA_REDUCE_EARLY_DONE: round: %d, arrival: %d, exchange_rank: %d",
                     round, arrival, exchange_rank);
 
-                ex_rank_array[round] = exchange_rank;
             }
             else { // is late, fetch peer, fetch rank from ss
                 send_count[round] = win_count / 2;
@@ -106,6 +107,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
                 recv_idx[round] = send_idx[round] + send_count[round];
                 void* send_ptr = (int8_t*)rbuf + ((ptrdiff_t)send_idx[round] * extent);
                 void* recv_ptr = (int8_t*)rbuf + ((ptrdiff_t)recv_idx[round] * extent);
+                void* recv_tmp = bkpap_module->local_pbuffs.tag.buff_arr;
 
                 while (-1 == exchange_rank) {
                     ret = mca_coll_bkpap_get_rank_of_arrival(exchange_arrival, 0, bkpap_module->remote_syncstructure, bkpap_module, &exchange_rank);
@@ -115,11 +117,12 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
                 BK_RSA_MAKE_TAG(tag, tag_mask, num_rounds, round, 0);
                 BKPAP_OUTPUT("RSA_REDUCE_LATE: round: %d, arrival: %d, exchange_rank: %d, send_idx: %d, send_count: %d, recv_idx: %d, recv_count: %d",
                     round, arrival, exchange_rank, send_idx[round], send_count[round], recv_idx[round], recv_count[round]);
-                BKPAP_PROFILE("bkpap_rsa_enter_late_exchange", inter_rank);
-                ret = mca_coll_bkpap_reduce_late_p2p(send_ptr, send_count[round], recv_ptr, recv_count[round],
-                    exchange_rank, tag, tag_mask, dtype, op, inter_comm, bkpap_module);
-                BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_reduce_late_p2p failed", bkpap_rsa_allreduce_exit);
-                BKPAP_PROFILE("bkpap_rsa_leave_late_exchange", inter_rank);
+                ret = mca_coll_bkpap_dplane_sendrecv_from_early(send_ptr, send_count[round], recv_tmp, recv_count[round],
+                    dtype, exchange_rank, tag, tag_mask, inter_comm, bkpap_module);
+                BKPAP_CHK_MPI_MSG_LBL(ret, "mca_coll_bkpap_dplane_sendrecv_from_early failed", bkpap_rsa_allreduce_exit);
+                ret = mca_coll_bkpap_reduce_local(op, recv_tmp, recv_ptr, recv_count[round], dtype);
+                BKPAP_CHK_MPI_MSG_LBL(ret, "mca_coll_bkpap_reduce_local failed", bkpap_rsa_allreduce_exit);
+
                 BKPAP_OUTPUT("RSA_REDUCE_LATE_DONE: round: %d, arrival: %d, exchange_rank: %d",
                     round, arrival, exchange_rank);
 
@@ -138,6 +141,12 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
             void* send_ptr = (int8_t*)rbuf + ((ptrdiff_t)send_idx[round] * extent);
             BKPAP_OUTPUT("RSA_AG_STEP: round: %d, arrival: %d exchange_rank: %d, recv_idx: %d, recv_count: %d, send_idx: %d, send_count: %d", round, arrival, exchange_rank,
                 recv_idx[round], recv_count[round], send_idx[round], send_count[round]);
+
+            while (-1 == exchange_rank) {
+                int exchange_arrival = arrival ^ (1 << round);
+                ret = mca_coll_bkpap_get_rank_of_arrival(exchange_arrival, 0, bkpap_module->remote_syncstructure, bkpap_module, &exchange_rank);
+                BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_rsa_allreduce_exit);
+            }
 
             BK_RSA_MAKE_TAG(tag, tag_mask, num_rounds, round, 1);
             BKPAP_PROFILE("bkpap_rsa_enter_sendrecv", inter_rank);
@@ -181,8 +190,6 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     mca_coll_bkpap_module_t* bkpap_module = (mca_coll_bkpap_module_t*)module;
     int ret = OMPI_SUCCESS, alg = mca_coll_bkpap_component.allreduce_alg;
     size_t dsize = -1, total_dsize = -1;
-
-    // TODO: Think about fastpath optimization
 
     if (OPAL_UNLIKELY(alg >= BKPAP_ALLREDUCE_ALG_COUNT)) {
         BKPAP_ERROR("Selected alg %d not available, change OMPI_MCA_coll_bkpap_allreduce_alg", alg);
@@ -237,9 +244,6 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), count, is_multinode, alg);
 
 
-    // if (OPAL_UNLIKELY((is_multinode && intra_rank == 0 && !bkpap_module->ucp_is_initialized)
-    //     || (!is_multinode && !bkpap_module->ucp_is_initialized))) {
-    // if (OPAL_UNLIKELY(!bkpap_module->ucp_is_initialized && 0 == ompi_comm_rank(ss_intra_comm))) {
     if (OPAL_UNLIKELY(!bkpap_module->ucp_is_initialized)) {
         if (0 == ompi_comm_rank(ss_intra_comm)) { // is internode
             ret = mca_coll_bkpap_lazy_init_module_ucx(bkpap_module, ss_inter_comm, alg);
@@ -278,6 +282,9 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         break;
     case BKPAP_ALLREDUCE_BASE_RSA_GPU:
         ret = ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(sbuf, rbuf, count, dtype, op, comm, bkpap_module);
+        break;
+    case BKPAP_ALLREDUCE_ALG_BINOMIAL:
+        ret = coll_bkpap_papaware_binomial_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
     default:
         BKPAP_ERROR("alg %d undefined, falling back", alg);

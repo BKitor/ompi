@@ -286,6 +286,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		}
 		break;
 	case BKPAP_ALLREDUCE_ALG_RSA:
+	case BKPAP_ALLREDUCE_ALG_BINOMIAL:
 		num_syncstructures = 1;
 		counter_arr_len = 1;
 		arrival_arr_len = ompi_comm_size(comm);
