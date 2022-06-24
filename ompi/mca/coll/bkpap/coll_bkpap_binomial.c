@@ -14,10 +14,12 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 	int is_inter = (0 == intra_rank);
 	int vrank, mask = 1, p = -1, * c = NULL, tree_depth, nc = 0;
 
+	if (is_inter)BKPAP_PROFILE("bkpap_bin_start", inter_rank);
+
 	// intra_reduce
 	ret = bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
 	BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_abort_binomial_allreduce);
-	if (is_inter)BKPAP_PROFILE("bkpap_binomial_intra_reduce", inter_rank);
+	if (is_inter)BKPAP_PROFILE("bkpap_bin_intra_reduce", inter_rank);
 
 	if (is_inter) {
 		uint64_t tag, tag_mask;
@@ -26,9 +28,9 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 		ret = mca_coll_bkpap_arrive_ss(inter_rank, 0, 0, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "arrive_ss failed", bkpap_abort_binomial_allreduce);
 		int arrival = arrival_pos + 1;
-		BKPAP_PROFILE("bkpap_rsa_get_arrival", inter_rank);
+		BKPAP_PROFILE("bkpap_bin_get_arrival", inter_rank);
 
-		ompi_request_t* ibarrer_req = OMPI_REQUEST_NULL;
+		ompi_request_t* ibarrer_req = (void*)OMPI_REQUEST_NULL;
 		inter_comm->c_coll->coll_ibarrier(inter_comm, &ibarrer_req, inter_comm->c_coll->coll_ibarrier_module);
 
 		vrank = (arrival + inter_size + 2) % inter_size;
@@ -57,6 +59,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			mask /= 2;
 		}
 		BKPAP_OUTPUT("CALC TREE rank: %d, arrival: %d, depth: %d, parent: %d, nc: %d, childs:[%d, %d, %d, %d]", inter_rank, arrival, tree_depth, p, nc, c[0], c[1], c[2], c[3]);
+		BKPAP_PROFILE("bkpap_bin_calc_tree", inter_rank);
 
 		for (int i = 0; i < nc; i++) {
 			int peer = c[i];
@@ -82,6 +85,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype);
 			BKPAP_CHK_MPI_MSG_LBL(ret, "reduce_local failed", bkpap_abort_binomial_allreduce);
 		}
+		BKPAP_PROFILE("bkpap_bin_recv_child", inter_rank);
 
 		if (-1 != p) {
 			BK_BINOMIAL_MAKE_TAG(arrival, 0, tag, tag_mask);
@@ -103,7 +107,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 				BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_early failed", bkpap_abort_binomial_allreduce);
 			}
 		}
-		BKPAP_OUTPUT("REDUCE DONE");
+		BKPAP_PROFILE("bkpap_bin_send_parent", inter_rank);
 		bk_ompi_request_wait_all(&ibarrer_req, 1);
 
 		int bcast_root = -1;
@@ -114,17 +118,22 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 
 		ptrdiff_t lb, extent;
 		ompi_datatype_get_extent(dtype, &lb, &extent);
-		void* bc_tmp = malloc(count * extent);
+		// void* bc_tmp = malloc(count * extent);
 
-		if (bcast_root == inter_rank)
-			ompi_datatype_copy_content_same_ddt(dtype, count, bc_tmp, rbuf);
+		// if (bcast_root == inter_rank)
+		// 	ompi_datatype_copy_content_same_ddt(dtype, count, bc_tmp, rbuf);
 
-		ret = ompi_coll_base_bcast_intra_scatter_allgather_ring(bc_tmp, count, dtype, bcast_root, inter_comm, &bkpap_module->super, 0);
+		BKPAP_PROFILE("bkpap_bin_copy_bc_buf", inter_rank);
+
+		// ret = ompi_coll_base_bcast_intra_scatter_allgather_ring(bc_tmp, count, dtype, bcast_root, inter_comm, &bkpap_module->super, 0);
+		ret = ompi_coll_base_bcast_intra_scatter_allgather_ring(rbuf, count, dtype, bcast_root, inter_comm, &bkpap_module->super, 0);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_abort_binomial_allreduce);
+		BKPAP_PROFILE("bkpap_bin_scag", inter_rank);
 
-		if (bcast_root != inter_rank)
-			ompi_datatype_copy_content_same_ddt(dtype, count, rbuf, bc_tmp);
-		free(bc_tmp);
+		// if (bcast_root != inter_rank)
+		// 	ompi_datatype_copy_content_same_ddt(dtype, count, rbuf, bc_tmp);
+		// free(bc_tmp);
+		BKPAP_PROFILE("bkpap_bin_copy_out", inter_rank);
 
 	}
 
@@ -132,7 +141,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 		rbuf, count, dtype, 0, intra_comm,
 		intra_comm->c_coll->coll_bcast_module);
 	BKPAP_CHK_MPI_MSG_LBL(ret, "intra-stage bcast failed", bkpap_abort_binomial_allreduce);
-	if (is_inter)BKPAP_PROFILE("bkpap_binomial_intra-bcast", inter_rank);
+	if (is_inter)BKPAP_PROFILE("bkpap_bin_intra_bcast", inter_rank);
 
 
 	if (0 == inter_rank && 0 == intra_rank) {
@@ -140,6 +149,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 		ret = mca_coll_bkpap_reset_remote_ss(bkpap_module->remote_syncstructure, inter_comm, bkpap_module);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "reset_remote_ss failed", bkpap_abort_binomial_allreduce);
 	}
+	if (is_inter)BKPAP_PROFILE("bkpap_bin_end", inter_rank);
 
 	return OMPI_SUCCESS;
 	// return OPAL_ERR_NOT_IMPLEMENTED;
