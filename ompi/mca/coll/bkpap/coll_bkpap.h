@@ -52,7 +52,7 @@ BEGIN_C_DECLS
 /* Binomial tag format:
  * | 63 --- 2 |   1    |     0     |
  * |   child  | RED/BC | data/rank |
- * |   rank   |  phase |    type   |
+ * | arrival  |  phase |    type   |
 */
 #define BK_BINOMIAL_MAKE_TAG(_val, _phase, _tag, _tag_mask) { \
 	_tag_mask = 0xfffful; \
@@ -74,6 +74,7 @@ typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_RSA = 3,
 	BKPAP_ALLREDUCE_BASE_RSA_GPU = 4,
 	BKPAP_ALLREDUCE_ALG_BINOMIAL = 5,
+	BKPAP_ALLREDUCE_ALG_CHAIN = 6,
 	BKPAP_ALLREDUCE_ALG_COUNT
 } mca_coll_bkpap_allreduce_algs_t;
 
@@ -177,7 +178,7 @@ typedef struct mca_coll_bkpap_module_t {
 
 	ucp_ep_h* ucp_ep_arr;
 
-	bkpap_mempool_t mempool;
+	bkpap_mempool_t mempool[BKPAP_POSTBUF_MEMORY_TYPE_COUNT];
 
 	union {
 		mca_coll_bkpap_local_rma_postbuf_t rma;
@@ -266,9 +267,14 @@ int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, 
 int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
+int coll_bkpap_papaware_chain_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module);
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);
+
+int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
+int bk_inter_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
+int bk_intra_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
 
 END_C_DECLS
 #endif

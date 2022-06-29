@@ -12,35 +12,6 @@ static void _bk_send_cb_noparams(void* request, ucs_status_t status) {
 }
 
 
-static inline int bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, size_t full_count, ompi_datatype_t* dtype) {
-	if (OPAL_LIKELY(MPI_FLOAT == dtype && MPI_SUM == op)) { // is sum float
-		vec_add_float(source, target, full_count);
-	}
-	else {
-		BKPAP_ERROR("Falling back to ompi impl");
-		// FULL SEND TO A SEGV !!!
-		ompi_op_reduce(op, source, target, full_count, dtype);
-	}
-	return OMPI_SUCCESS;
-}
-
-static inline int mca_coll_bkpap_reduce_local(ompi_op_t* op, void* source, void* target, size_t count, ompi_datatype_t* dtype) {
-	switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-		bk_gpu_op_reduce(op, source, target, count, dtype);
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-		ompi_op_reduce(op, source, target, count, dtype);
-		break;
-	default:
-		BKPAP_ERROR("Bad memory type, %d", mca_coll_bkpap_component.bk_postbuf_memory_type);
-		return OMPI_ERROR;
-		break;
-	}
-	return OMPI_SUCCESS;
-}
-
 
 static inline int mca_coll_bkpap_reduce_dataplane(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
 	int dplane_type = mca_coll_bkpap_component.dataplane_type;
@@ -127,6 +98,7 @@ static inline ucs_status_t bk_flush_ucp_worker(void) {
 	}
 	return status;
 }
+
 
 static inline int bk_ompi_request_wait_all(ompi_request_t** request_arr, int req_arr_len) {
     int tmp_is_completed;

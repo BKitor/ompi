@@ -1,0 +1,107 @@
+#include "coll_bkpap.h"
+#include "coll_bkpap_util.inl"
+#include "coll_bkpap_ucp.inl"
+
+int coll_bkpap_papaware_chain_allreduce(const void* sbuf, void* rbuf,
+	int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op,
+	struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm,
+	mca_coll_bkpap_module_t* bkpap_module) {
+
+	int ret = OMPI_SUCCESS;
+	int inter_size = ompi_comm_size(inter_comm), inter_rank = ompi_comm_rank(inter_comm);
+	int intra_rank = ompi_comm_rank(intra_comm);
+	int is_inter = (0 == intra_rank);
+
+	if (is_inter)BKPAP_PROFILE("bkpap_chain_start", inter_rank);
+
+	ret = bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
+	BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_abort_chain_allreduce);
+	if (is_inter)BKPAP_PROFILE("bkpap_chain_intra_reduce", inter_rank);
+
+	if (is_inter) {
+		void* tmp_recv = bkpap_module->local_pbuffs.tag.buff_arr; // TODO: replace with mempool
+
+		uint64_t tag, tag_mask;
+		int64_t arrival_pos = -1;
+		ret = mca_coll_bkpap_arrive_ss(inter_rank, 0, 0, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
+		BKPAP_CHK_MPI_MSG_LBL(ret, "arrive_ss failed", bkpap_abort_chain_allreduce);
+		int arrival = arrival_pos + 1;
+
+		ompi_request_t* ibarrer_req = (void*)OMPI_REQUEST_NULL;
+		inter_comm->c_coll->coll_ibarrier(inter_comm, &ibarrer_req, inter_comm->c_coll->coll_ibarrier_module);
+
+		if (0 == arrival) {
+			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, tag, tag_mask);
+			ret = mca_coll_bkpap_dplane_send_to_late(rbuf, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_send_parent", inter_rank);
+		}
+		else if ((inter_size - 1) == arrival) {
+			int peer_rank = -1;
+			while (-1 == peer_rank) {
+				ret = mca_coll_bkpap_get_rank_of_arrival(arrival - 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &peer_rank);
+				BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_abort_chain_allreduce);
+			}
+
+			BK_BINOMIAL_MAKE_TAG(arrival, 0, tag, tag_mask);
+			ret = mca_coll_bkpap_dplane_recv_from_early(tmp_recv, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_recv_child", inter_rank);
+
+			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "local_reduce failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_local_reduce", inter_rank);
+		}
+		else {
+			int peer_rank = -1;
+			while (-1 == peer_rank) {
+				ret = mca_coll_bkpap_get_rank_of_arrival(arrival - 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &peer_rank);
+				BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_abort_chain_allreduce);
+			}
+
+			BK_BINOMIAL_MAKE_TAG(arrival, 0, tag, tag_mask);
+			ret = mca_coll_bkpap_dplane_recv_from_early(tmp_recv, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_recv_child", inter_rank);
+
+			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "local_reduce failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_local_reduce", inter_rank);
+
+			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, tag, tag_mask);
+			ret = mca_coll_bkpap_dplane_send_to_late(rbuf, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_send_parent", inter_rank);
+		}
+
+		bk_ompi_request_wait_all(&ibarrer_req, 1);
+
+		int bcast_root = -1;
+		while (-1 == bcast_root) {
+			ret = mca_coll_bkpap_get_rank_of_arrival(inter_size - 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &bcast_root);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival bcast_root failed", bkpap_abort_chain_allreduce);
+		}
+
+		ret = bk_inter_bcast(rbuf, count, dtype, bcast_root, inter_comm, bkpap_module);
+		BKPAP_CHK_MPI_MSG_LBL(ret, "bk_inter_bcast failed", bkpap_abort_chain_allreduce);
+		BKPAP_PROFILE("bkpap_chain_inter_bcast", inter_rank);
+
+		ret = inter_comm->c_coll->coll_barrier(inter_comm, inter_comm->c_coll->coll_barrier_module);
+		BKPAP_CHK_MPI_MSG_LBL(ret, "coll barrier failed", bkpap_abort_chain_allreduce);
+
+		if (inter_rank == 0) {
+			ret = mca_coll_bkpap_reset_remote_ss(bkpap_module->remote_syncstructure, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "reset_remote_ss failed", bkpap_abort_chain_allreduce);
+		}
+	}
+
+	ret = bk_intra_bcast(rbuf, count, dtype, 0, intra_comm, bkpap_module);
+	BKPAP_CHK_MPI_MSG_LBL(ret, "bk_intra_bcast failed", bkpap_abort_chain_allreduce);
+
+	BKPAP_PROFILE("bkpap_chain_intra_bcast", inter_rank);
+
+	return OMPI_SUCCESS;
+
+bkpap_abort_chain_allreduce:
+	return ret;
+}

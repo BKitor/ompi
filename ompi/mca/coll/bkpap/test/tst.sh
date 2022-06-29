@@ -47,6 +47,9 @@ while getopts ":v:a:unm:dsp:" bk_opt; do
 		5)
 			BK_RUN_ALG5=1
 			;;
+		6)
+			BK_RUN_ALG6=1
+			;;
 		*)
 			echo "ERORR: bad value '-a ${OPTARG}'"
 			print_help
@@ -167,6 +170,9 @@ bk_cond_osu_tst $BK_RUN_ALG4
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=5
 bk_cond_osu_tst $BK_RUN_ALG5
+
+export OMPI_MCA_coll_bkpap_allreduce_alg=6
+bk_cond_osu_tst $BK_RUN_ALG6
 
 export OMPI_MCA_coll_ucc_priority=35
 export OMPI_MCA_coll_ucc_enable=1

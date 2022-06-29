@@ -240,8 +240,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     struct ompi_communicator_t* ss_inter_comm = (is_multinode) ? bkpap_module->inter_comm : comm;
     struct ompi_communicator_t* ss_intra_comm = (is_multinode) ? bkpap_module->intra_comm : &ompi_mpi_comm_self.comm;
 
-    BKPAP_OUTPUT("comm rank: %d, intra rank: %d, inter rank: %d, counte: %d, is_multinode: %d, alg %d", ompi_comm_rank(comm),
-        ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), count, is_multinode, alg);
+    BKPAP_OUTPUT("AR comm rank: %d, intra rank: %d, inter rank: %d, count: %d, is_multinode: %d, alg %d, rbuf: [%p]", ompi_comm_rank(comm),
+        ompi_comm_rank(ss_intra_comm), ompi_comm_rank(ss_inter_comm), count, is_multinode, alg, rbuf);
 
 
     if (OPAL_UNLIKELY(!bkpap_module->ucp_is_initialized)) {
@@ -285,6 +285,9 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         break;
     case BKPAP_ALLREDUCE_ALG_BINOMIAL:
         ret = coll_bkpap_papaware_binomial_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
+        break;
+    case BKPAP_ALLREDUCE_ALG_CHAIN:
+        ret = coll_bkpap_papaware_chain_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
     default:
         BKPAP_ERROR("alg %d undefined, falling back", alg);

@@ -23,6 +23,8 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 	int num_segments, line, ret, segindex, i, rank;
 	int recvcount, prevcount, inbi;
 	mca_coll_base_module_t* module = &(bkpap_module->super);
+	mca_coll_bkpap_postbuf_memory_t bk_rbuf_memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+	
 
 	/**
 	 * Determine number of segments and number of elements
@@ -54,7 +56,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		if ((NULL == accumbuf) || (root != rank)) {
 			/* Allocate temporary accumulator buffer. */
 			size = opal_datatype_span(&datatype->super, original_count, &gap);
-			ret = bkpap_mempool_alloc((void**)&accumbuf_free, size, bkpap_module);
+			ret = bkpap_mempool_alloc((void**)&accumbuf_free, size, bk_rbuf_memtype, bkpap_module);
 			if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 				line = __LINE__; ret = -1; goto error_hndl;
 			}
@@ -71,7 +73,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		}
 		/* Allocate two buffers for incoming segments */
 		real_segment_size = opal_datatype_span(&datatype->super, count_by_segment, &gap);
-		ret = bkpap_mempool_alloc((void**)&inbuf_free[0], real_segment_size, bkpap_module);
+		ret = bkpap_mempool_alloc((void**)&inbuf_free[0], real_segment_size, bk_rbuf_memtype, bkpap_module);
 		if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 			line = __LINE__; ret = -1; goto error_hndl;
 		}
@@ -79,7 +81,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		/* if there is chance to overlap communication -
 		   allocate second buffer */
 		if ((num_segments > 1) || (tree->tree_nextsize > 1)) {
-			ret = bkpap_mempool_alloc((void**)&inbuf_free[1], real_segment_size, bkpap_module);
+			ret = bkpap_mempool_alloc((void**)&inbuf_free[1], real_segment_size, bk_rbuf_memtype, bkpap_module);
 			if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
 				line = __LINE__; ret = -1; goto error_hndl;
 			}
@@ -191,9 +193,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		} /* end of for each segment */
 
 		/* clean up */
-		if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bkpap_module);
-		if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bkpap_module);
-		if (accumbuf_free != NULL) bk_mempool_free(accumbuf_free, bkpap_module);
+		if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bk_rbuf_memtype, bkpap_module);
+		if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bk_rbuf_memtype, bkpap_module);
+		if (accumbuf_free != NULL) bk_mempool_free(accumbuf_free, bk_rbuf_memtype, bkpap_module);
 	}
 
 	/* leaf nodes
@@ -289,7 +291,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 	return OMPI_SUCCESS;
 
 error_hndl:  /* error handler */
-   /* find a real error code */
+	/* find a real error code */
 	if (MPI_ERR_IN_STATUS == ret) {
 		for (i = 0; i < 2; i++) {
 			if (MPI_REQUEST_NULL == reqs[i]) continue;
@@ -314,9 +316,9 @@ error_hndl:  /* error handler */
 		}
 		ompi_coll_base_free_reqs(sreq, max_outstanding_reqs);
 	}
-	if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bkpap_module);
-	if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bkpap_module);
-	if (accumbuf_free != NULL) bk_mempool_free(accumbuf, bkpap_module);
+	if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bk_rbuf_memtype, bkpap_module);
+	if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bk_rbuf_memtype, bkpap_module);
+	if (accumbuf_free != NULL) bk_mempool_free(accumbuf, bk_rbuf_memtype, bkpap_module);
 	BKPAP_OUTPUT(
 		"ERROR_HNDL: node %d file %s line %d error %d\n",
 		rank, __FILE__, line, ret);
@@ -339,8 +341,8 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recv
 
 	if (OPAL_UNLIKELY(1 == ompi_comm_size(comm)))return OMPI_SUCCESS;
 
-	BKPAP_OUTPUT("coll:base:reduce_intra_binomial rank %d ss %5d",
-		ompi_comm_rank(comm), segsize);
+	BKPAP_OUTPUT("coll:bkpap:reduce_intra_binomial rank %d ss %5d [%p]",
+		ompi_comm_rank(comm), segsize, recvbuf);
 
 	COLL_BASE_UPDATE_IN_ORDER_BMTREE(comm, base_module, root);
 
@@ -355,4 +357,27 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recv
 		op, root, comm, bkpap_module,
 		data->cached_in_order_bmtree,
 		segcount, max_outstanding_reqs);
+}
+
+int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+    int rank = ompi_comm_rank(comm);
+
+    void* reduce_sbuf = (0 == rank) ? MPI_IN_PLACE : rbuf;
+    void* reduce_rbuf = (0 == rank) ? rbuf : NULL;
+
+    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
+    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+        return comm->c_coll->coll_reduce(
+            reduce_sbuf, reduce_rbuf, count, dtype, op, 0,
+            comm, comm->c_coll->coll_reduce_module);
+        break;
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+        return mca_coll_bkpap_reduce_intra_inplace_binomial(reduce_sbuf, reduce_rbuf, count, dtype, op, 0, comm, bkpap_module);
+        break;
+    default:
+        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
+        return OMPI_ERROR;
+        break;
+    }
 }

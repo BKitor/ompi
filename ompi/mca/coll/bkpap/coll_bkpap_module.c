@@ -287,6 +287,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		break;
 	case BKPAP_ALLREDUCE_ALG_RSA:
 	case BKPAP_ALLREDUCE_ALG_BINOMIAL:
+	case BKPAP_ALLREDUCE_ALG_CHAIN:
 		num_syncstructures = 1;
 		counter_arr_len = 1;
 		arrival_arr_len = ompi_comm_size(comm);
@@ -321,45 +322,50 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 }
 
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module) {
-	bkpap_mempool_t* m = &bkpap_module->mempool;
-	m->head = NULL; 
-	m->memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+	for (int i = 0; i < BKPAP_POSTBUF_MEMORY_TYPE_COUNT; i++) {
+		bkpap_mempool_t* m = &bkpap_module->mempool[i];
+		m->head = NULL;
+		m->memtype = i;
+	}
 	return OMPI_SUCCESS;
 }
 
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module) {
-	bkpap_mempool_t* m = &bkpap_module->mempool;
-	bkpap_mempool_buf_t* b = m->head;
-	while(NULL != b){
-		bkpap_mempool_buf_t* bn = b->next;
-		if(b->allocated)
-			BKPAP_ERROR("Freeing mempoolbuf marked allocated, migh havem mem-leak");
-		bkpap_mempool_destroy_buf(b, m);
-		b = bn;
+	for (int i = 0; i < BKPAP_POSTBUF_MEMORY_TYPE_COUNT; i++) {
+		bkpap_mempool_t* m = &bkpap_module->mempool[i];
+		bkpap_mempool_buf_t* b = m->head;
+		while (NULL != b) {
+			bkpap_mempool_buf_t* bn = b->next;
+			if (b->allocated)
+				BKPAP_ERROR("Freeing mempoolbuf marked allocated, migh havem mem-leak");
+			bkpap_mempool_destroy_buf(b, m);
+			b = bn;
+		}
+
 	}
 	return OMPI_SUCCESS;
 }
 
 // returns error if runs out of space
 int bk_fill_array_str_ld(size_t arr_len, int64_t* arr, size_t str_limit, char* out_str) {
-    if (str_limit < 3) return OMPI_ERROR;
-    char tmp[16] = { "\0" };
-    *out_str = '\0';
-    strcat(out_str, "[");
-    for (size_t i = 0; i < arr_len; i++) {
-        if (i == 0)
-            sprintf(tmp, " %ld", arr[i]);
-        else
-            sprintf(tmp, ", %ld", arr[i]);
+	if (str_limit < 3) return OMPI_ERROR;
+	char tmp[16] = { "\0" };
+	*out_str = '\0';
+	strcat(out_str, "[");
+	for (size_t i = 0; i < arr_len; i++) {
+		if (i == 0)
+			sprintf(tmp, " %ld", arr[i]);
+		else
+			sprintf(tmp, ", %ld", arr[i]);
 
-        if (strlen(tmp) > (str_limit - strlen(out_str)))
-            return OMPI_ERROR;
+		if (strlen(tmp) > (str_limit - strlen(out_str)))
+			return OMPI_ERROR;
 
-        strcat(out_str, tmp);
-    }
+		strcat(out_str, tmp);
+	}
 
-    if (strlen(out_str) > (str_limit + 1))
-        return OMPI_ERROR;
-    strcat(out_str, " ]");
-    return OMPI_SUCCESS;
+	if (strlen(out_str) > (str_limit + 1))
+		return OMPI_ERROR;
+	strcat(out_str, " ]");
+	return OMPI_SUCCESS;
 }
