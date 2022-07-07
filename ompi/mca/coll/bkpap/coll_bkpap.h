@@ -19,6 +19,11 @@
 
 #include <ucp/api/ucp.h>
 
+#pragma GCC diagnostic ignored "-Wpedantic"
+#include <cuda.h>
+#include <cuda_runtime.h>
+#pragma GCC diagnostic pop
+
 BEGIN_C_DECLS
 
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
@@ -186,10 +191,12 @@ typedef struct mca_coll_bkpap_module_t {
 	} local_pbuffs;
 	mca_coll_bkpap_remote_rma_postbuf_t remote_pbuffs;
 
-
 	int num_syncstructures; // array of ss for pipelining
 	mca_coll_bkpap_local_syncstruct_t* local_syncstructure;
 	mca_coll_bkpap_remote_syncstruct_t* remote_syncstructure;
+	
+	cudaStream_t bk_cs[2];
+	void* host_pinned_buf;
 
 } mca_coll_bkpap_module_t;
 
@@ -273,8 +280,9 @@ int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module);
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);
 
 int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
-int bk_inter_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
+int bk_inter_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, uint32_t seg_size);
 int bk_intra_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
+int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count, struct ompi_datatype_t* datatype, int root, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, uint32_t count_by_segment, ompi_coll_tree_t* tree);
 
 END_C_DECLS
 #endif

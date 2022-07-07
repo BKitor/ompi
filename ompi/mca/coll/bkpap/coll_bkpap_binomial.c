@@ -116,20 +116,17 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival bcast_root failed", bkpap_abort_binomial_allreduce);
 		}
 
-		ret = bk_inter_bcast(rbuf, count, dtype, bcast_root, inter_comm, bkpap_module);
+		ret = bk_inter_bcast(rbuf, count, dtype, bcast_root, inter_comm, bkpap_module,
+			mca_coll_bkpap_component.pipeline_segment_size);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "bk_opt_bc bcast failed", bkpap_abort_binomial_allreduce);
+
+		BKPAP_PROFILE("bkpap_bin_inter_bcast", inter_rank);
 
 	}
 
-	BKPAP_OUTPUT("rank (%d, %d) calling bcast on rbuf [%p], is_cu: %d, count: %d", ompi_comm_rank(inter_comm), ompi_comm_rank(intra_comm), rbuf, opal_cuda_check_one_buf(rbuf, NULL), count);
-	// ret = intra_comm->c_coll->coll_bcast(
-	// 	rbuf, count, dtype, 0, intra_comm,
-	// 	intra_comm->c_coll->coll_bcast_module);
-	// ret = ompi_coll_base_bcast_intra_bintree(rbuf, count, dtype, 0, intra_comm, &bkpap_module->super, 0);
 	ret = bk_intra_bcast(rbuf, count, dtype, 0, intra_comm, bkpap_module);
 	BKPAP_CHK_MPI_MSG_LBL(ret, "intra-stage bcast failed", bkpap_abort_binomial_allreduce);
 	if (is_inter)BKPAP_PROFILE("bkpap_bin_intra_bcast", inter_rank);
-
 
 	if (0 == inter_rank && 0 == intra_rank) {
 		BKPAP_OUTPUT("RESET ATTEMPT");

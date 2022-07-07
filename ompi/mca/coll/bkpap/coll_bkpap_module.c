@@ -3,11 +3,6 @@
 #include "coll_bkpap_util.inl"
 #include "opal/util/show_help.h"
 
-#pragma GCC diagnostic ignored "-Wpedantic"
-#include <cuda.h>
-#include <cuda_runtime.h>
-#pragma GCC diagnostic pop
-
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 	memset(&(module->endof_super), 0, sizeof(*module) - sizeof(module->super));
 }
@@ -15,6 +10,10 @@ static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
 // TODO: Fix issue of hanging on ucp_ep_destroy()
 // started after transitioning postbuf size from (postbuf_size * k) to (postbuf_size * (k-1)) 
 static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
+	cudaStreamDestroy(module->bk_cs[0]);
+	cudaStreamDestroy(module->bk_cs[1]);
+	cudaFreeHost(module->host_pinned_buf);
+
 	bkpap_finalize_mempool(module);
 
 	if (NULL != module->remote_syncstructure) {
@@ -255,6 +254,12 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		BKPAP_ERROR("BAD DATAPLANE TYPE SELECTED %d, options are {0:RMA, 1:TAG}", mca_coll_bkpap_component.dataplane_type);
 		return OMPI_ERROR;
 		break;
+	}
+
+	if (BKPAP_POSTBUF_MEMORY_TYPE_HOST != mca_coll_bkpap_component.bk_postbuf_memory_type) {
+		cudaStreamCreate(&bkpap_module->bk_cs[0]);
+		cudaStreamCreate(&bkpap_module->bk_cs[1]);
+		cudaMallocHost(&bkpap_module->host_pinned_buf, mca_coll_bkpap_component.postbuff_size);
 	}
 
 	// TODO: refactor into 'bkpap_precalc_ktree/ktree_pipeline/rsa'

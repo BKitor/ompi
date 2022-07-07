@@ -26,6 +26,7 @@ int coll_bkpap_papaware_chain_allreduce(const void* sbuf, void* rbuf,
 		ret = mca_coll_bkpap_arrive_ss(inter_rank, 0, 0, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "arrive_ss failed", bkpap_abort_chain_allreduce);
 		int arrival = arrival_pos + 1;
+		BKPAP_PROFILE("bkpap_chain_get_arrival", inter_rank);
 
 		ompi_request_t* ibarrer_req = (void*)OMPI_REQUEST_NULL;
 		inter_comm->c_coll->coll_ibarrier(inter_comm, &ibarrer_req, inter_comm->c_coll->coll_ibarrier_module);
@@ -82,7 +83,8 @@ int coll_bkpap_papaware_chain_allreduce(const void* sbuf, void* rbuf,
 			BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival bcast_root failed", bkpap_abort_chain_allreduce);
 		}
 
-		ret = bk_inter_bcast(rbuf, count, dtype, bcast_root, inter_comm, bkpap_module);
+		ret = bk_inter_bcast(rbuf, count, dtype, bcast_root, inter_comm, bkpap_module,
+			mca_coll_bkpap_component.pipeline_segment_size);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "bk_inter_bcast failed", bkpap_abort_chain_allreduce);
 		BKPAP_PROFILE("bkpap_chain_inter_bcast", inter_rank);
 
