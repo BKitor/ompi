@@ -11,48 +11,6 @@ static void _bk_send_cb_noparams(void* request, ucs_status_t status) {
 	_bk_send_cb(request, status, NULL);
 }
 
-
-
-static inline int mca_coll_bkpap_reduce_dataplane(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
-	int dplane_type = mca_coll_bkpap_component.dataplane_type;
-
-	switch (dplane_type) {
-	case BKPAP_DATAPLANE_RMA:
-		return mca_coll_bkpap_rma_reduce_postbufs(local_buf, dtype, count, op, num_buffers, comm, module);
-		break;
-	case BKPAP_DATAPLANE_TAG:
-		BKPAP_OUTPUT("TAG dataplane reduce, rank: %d, count: %d", ompi_comm_rank(comm), count);
-		return mca_coll_bkpap_tag_reduce_postbufs(local_buf, dtype, count, op, num_buffers, comm, module);
-		break;
-	default:
-		BKPAP_ERROR("Bad dataplance type %d, possibilities are {0:RMA, 1:TAG}", dplane_type);
-		return OMPI_ERROR;
-	}
-	return OMPI_ERROR;
-}
-
-static inline int mca_coll_bkpap_send_dataplane(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
-	int dplane_type = mca_coll_bkpap_component.dataplane_type;
-	switch (dplane_type) {
-	case BKPAP_DATAPLANE_RMA:
-		BKPAP_OUTPUT("RMA dataplane send, rank: %d, count: %d, dest: %d, slot: %d", ompi_comm_rank(comm), count, dest, slot);
-		return mca_coll_bkpap_rma_send_postbuf(buf, dtype, count, dest, slot, comm, module);
-		break;
-	case BKPAP_DATAPLANE_TAG:
-		BKPAP_OUTPUT("TAG dataplane send, rank: %d, count: %d, dest: %d, slot: %d", ompi_comm_rank(comm), count, dest, slot);
-		return mca_coll_bkpap_tag_send_postbuf(buf, dtype, count, dest, slot, comm, module);
-		break;
-		break;
-
-	default:
-		BKPAP_ERROR("Bad dataplance type %d, possibilities are {0:RMA, 1:TAG}", dplane_type);
-		return OMPI_ERROR;
-		break;
-	}
-
-}
-
-
 static inline ucs_status_t bk_poll_ucs_completion(ucs_status_ptr_t status_ptr) {
 	if (UCS_OK == status_ptr) {
 		return UCS_OK;

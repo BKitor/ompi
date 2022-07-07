@@ -287,7 +287,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
 
 cleanup_and_return:
     if (NULL != tmp_buf_raw)
-        bk_mempool_free(tmp_buf_raw, bk_memtype, bkpap_module);
+        bkpap_mempool_free(tmp_buf_raw, bk_memtype, bkpap_module);
     if (NULL != rindex)
         free(rindex);
     if (NULL != sindex)

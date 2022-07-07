@@ -7,8 +7,67 @@
 #include <cuda_runtime.h>
 #pragma GCC diagnostic pop
 
+int coll_bkpap_rma_send_to_early(void* send_buf, int send_count,
+	struct ompi_datatype_t* dtype, int peer_rank,
+	int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
 
-int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
+	return OPAL_ERR_NOT_IMPLEMENTED;
+
+}
+
+int coll_bkpap_rma_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype,
+	int64_t tag, int64_t tag_mask, ompi_communicator_t* comm,
+	mca_coll_bkpap_module_t* module) {
+
+	return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+int coll_bkpap_rma_recv_from_early(void* recv_buf, int recv_count,
+	struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
+	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+
+	return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+int coll_bkpap_rma_recv_from_late(void* recv_buf, int recv_count,
+	struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask,
+	ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+
+	return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+int coll_bkpap_rma_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf,
+	int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
+	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+
+	return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+int coll_bkpap_rma_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf,
+	int recv_count, struct ompi_datatype_t* dtype, int64_t tag,
+	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+
+	return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+int coll_bkpap_rma_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count,
+	struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag,
+	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
+
+	return OPAL_ERR_NOT_IMPLEMENTED;
+}
+
+static void bk_set_rma_dplane_ftbl(coll_bkpap_dplane_ftbl_t* ftbl) {
+	ftbl->send_to_early = coll_bkpap_rma_send_to_early;
+	ftbl->send_to_late = coll_bkpap_rma_send_to_late;
+	ftbl->recv_from_early = coll_bkpap_rma_recv_from_early;
+	ftbl->recv_from_late = coll_bkpap_rma_recv_from_late;
+	ftbl->sendrecv_from_early = coll_bkpap_rma_sendrecv_from_early;
+	ftbl->sendrecv_from_late = coll_bkpap_rma_sendrecv_from_late;
+	ftbl->sendrecv = coll_bkpap_rma_sendrecv;
+}
+
+int mca_coll_bkpap_rma_dplane_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
 	int ret = OMPI_SUCCESS, mpi_size = ompi_comm_size(comm), mpi_rank = ompi_comm_rank(comm);
 	ucs_status_t status = UCS_OK;
 	ucp_mem_map_params_t mem_map_params;
@@ -17,20 +76,18 @@ int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 	int* agv_displ_arr = NULL, * agv_count_arr = NULL;
 	uint8_t* agv_rkey_recv_buf = NULL;
 	size_t agv_rkey_recv_buf_size = 0;
-	int num_bufs = mca_coll_bkpap_component.allreduce_k_value - 1;
-	
-	if(BKPAP_ALLREDUCE_ALG_RSA == mca_coll_bkpap_component.allreduce_alg){
+
+	if (BKPAP_ALLREDUCE_ALG_RSA == mca_coll_bkpap_component.allreduce_alg) {
 		BKPAP_ERROR("RSA with RMS dataplane is not supported");
 		return OMPI_ERR_NOT_SUPPORTED;
 	}
 
 	BKPAP_MSETZ(mem_map_params);
-	BKPAP_MSETZ(module->local_pbuffs.rma.dbell_attrs);
-	BKPAP_MSETZ(module->local_pbuffs.rma.postbuf_attrs);
-	module->local_pbuffs.rma.num_buffs = num_bufs;
+	BKPAP_MSETZ(module->dplane.rma.local.dbell_attrs);
+	BKPAP_MSETZ(module->dplane.rma.local.postbuf_attrs);
 
 	void* mapped_postbuf = NULL;
-	size_t mapped_postbuf_size = mca_coll_bkpap_component.postbuff_size * (num_bufs);
+	size_t mapped_postbuf_size = mca_coll_bkpap_component.postbuff_size;
 
 	switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
 	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
@@ -64,7 +121,7 @@ int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 	mem_map_params.length = mapped_postbuf_size;
 	mem_map_params.memory_type = mca_coll_bkpap_component.ucs_postbuf_memory_type;
 
-	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_pbuffs.rma.postbuf_h);
+	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->dplane.rma.local.postbuf_h);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
 	BKPAP_MSETZ(mem_map_params);
@@ -73,44 +130,42 @@ int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 		UCP_MEM_MAP_PARAM_FIELD_FLAGS |
 		UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE;
 	mem_map_params.address = NULL;
-	mem_map_params.length = sizeof(int64_t) * (num_bufs);
+	mem_map_params.length = sizeof(int64_t);
 	mem_map_params.flags = UCP_MEM_MAP_ALLOCATE;
 	mem_map_params.memory_type = UCS_MEMORY_TYPE_HOST;
-	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->local_pbuffs.rma.dbell_h);
+	status = ucp_mem_map(mca_coll_bkpap_component.ucp_context, &mem_map_params, &module->dplane.rma.local.dbell_h);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
-	module->local_pbuffs.rma.postbuf_attrs.field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH; //| UCP_MEM_ATTR_FIELD_MEM_TYPE;
-	status = ucp_mem_query(module->local_pbuffs.rma.postbuf_h, &module->local_pbuffs.rma.postbuf_attrs);
+	module->dplane.rma.local.postbuf_attrs.field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH; //| UCP_MEM_ATTR_FIELD_MEM_TYPE;
+	status = ucp_mem_query(module->dplane.rma.local.postbuf_h, &module->dplane.rma.local.postbuf_attrs);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
-	module->local_pbuffs.rma.dbell_attrs.field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH; //| UCP_MEM_ATTR_FIELD_MEM_TYPE;
-	status = ucp_mem_query(module->local_pbuffs.rma.dbell_h, &module->local_pbuffs.rma.dbell_attrs);
+	module->dplane.rma.local.dbell_attrs.field_mask = UCP_MEM_ATTR_FIELD_ADDRESS | UCP_MEM_ATTR_FIELD_LENGTH; //| UCP_MEM_ATTR_FIELD_MEM_TYPE;
+	status = ucp_mem_query(module->dplane.rma.local.dbell_h, &module->dplane.rma.local.dbell_attrs);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
-	int64_t* dbells = module->local_pbuffs.rma.dbell_attrs.address;
-	for (int i = 0; i < (num_bufs); i++)
-		dbells[i] = BKPAP_DBELL_UNSET;
-	dbells = NULL;
+	int64_t* dbells = module->dplane.rma.local.dbell_attrs.address;
+	dbells[0] = BKPAP_DBELL_UNSET;
 
-	module->remote_pbuffs.buffer_addr_arr = calloc(mpi_size, sizeof(*module->remote_pbuffs.buffer_addr_arr));
-	BKPAP_CHK_MALLOC(module->remote_pbuffs.buffer_addr_arr, bkpap_remotepostbuf_wireup_err);
+	module->dplane.rma.remote.buffer_addr_arr = calloc(mpi_size, sizeof(*module->dplane.rma.remote.buffer_addr_arr));
+	BKPAP_CHK_MALLOC(module->dplane.rma.remote.buffer_addr_arr, bkpap_remotepostbuf_wireup_err);
 	ret = comm->c_coll->coll_allgather(
-		&module->local_pbuffs.rma.postbuf_attrs.address, 1, MPI_LONG_LONG,
-		module->remote_pbuffs.buffer_addr_arr, 1, MPI_LONG_LONG,
+		&module->dplane.rma.local.postbuf_attrs.address, 1, MPI_LONG_LONG,
+		module->dplane.rma.remote.buffer_addr_arr, 1, MPI_LONG_LONG,
 		comm, comm->c_coll->coll_allgather_module);
 	BKPAP_CHK_MPI(ret, bkpap_remotepostbuf_wireup_err);
 
-	module->remote_pbuffs.dbell_addr_arr = calloc(mpi_size, sizeof(*module->remote_pbuffs.dbell_addr_arr));
-	BKPAP_CHK_MALLOC(module->remote_pbuffs.dbell_addr_arr, bkpap_remotepostbuf_wireup_err);
+	module->dplane.rma.remote.dbell_addr_arr = calloc(mpi_size, sizeof(*module->dplane.rma.remote.dbell_addr_arr));
+	BKPAP_CHK_MALLOC(module->dplane.rma.remote.dbell_addr_arr, bkpap_remotepostbuf_wireup_err);
 	ret = comm->c_coll->coll_allgather(
-		&module->local_pbuffs.rma.dbell_attrs.address, 1, MPI_LONG_LONG,
-		module->remote_pbuffs.dbell_addr_arr, 1, MPI_LONG_LONG,
+		&module->dplane.rma.local.dbell_attrs.address, 1, MPI_LONG_LONG,
+		module->dplane.rma.remote.dbell_addr_arr, 1, MPI_LONG_LONG,
 		comm, comm->c_coll->coll_allgather_module);
 	BKPAP_CHK_MPI(ret, bkpap_remotepostbuf_wireup_err);
 
-	status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.postbuf_h, &postbuf_rkey_buffer, &postbuf_rkey_buffer_size);
+	status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->dplane.rma.local.postbuf_h, &postbuf_rkey_buffer, &postbuf_rkey_buffer_size);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
-	status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.dbell_h, &dbell_rkey_buffer, &dbell_rkey_buffer_size);
+	status = ucp_rkey_pack(mca_coll_bkpap_component.ucp_context, module->dplane.rma.local.dbell_h, &dbell_rkey_buffer, &dbell_rkey_buffer_size);
 	BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 
 	postbuf_rkey_size_arr = calloc(mpi_size, sizeof(*postbuf_rkey_size_arr));
@@ -147,14 +202,14 @@ int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 		agv_rkey_recv_buf, agv_count_arr, agv_displ_arr, MPI_BYTE,
 		comm, comm->c_coll->coll_allgatherv_module);
 	BKPAP_CHK_MPI(ret, bkpap_remotepostbuf_wireup_err);
-	module->remote_pbuffs.buffer_rkey_arr = calloc(mpi_size, sizeof(*module->remote_pbuffs.buffer_rkey_arr));
-	BKPAP_CHK_MALLOC(module->remote_pbuffs.buffer_rkey_arr, bkpap_remotepostbuf_wireup_err);
+	module->dplane.rma.remote.buffer_rkey_arr = calloc(mpi_size, sizeof(*module->dplane.rma.remote.buffer_rkey_arr));
+	BKPAP_CHK_MALLOC(module->dplane.rma.remote.buffer_rkey_arr, bkpap_remotepostbuf_wireup_err);
 	for (int i = 0; i < mpi_size; i++) {
 		if (i == mpi_rank)continue;
 		status = ucp_ep_rkey_unpack(
 			module->ucp_ep_arr[i],
 			agv_rkey_recv_buf + agv_displ_arr[i],
-			&module->remote_pbuffs.buffer_rkey_arr[i]);
+			&module->dplane.rma.remote.buffer_rkey_arr[i]);
 		BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 	}
 
@@ -172,18 +227,21 @@ int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_commu
 		agv_rkey_recv_buf, agv_count_arr, agv_displ_arr, MPI_BYTE,
 		comm, comm->c_coll->coll_allgatherv_module);
 	BKPAP_CHK_MPI(ret, bkpap_remotepostbuf_wireup_err);
-	module->remote_pbuffs.dbell_rkey_arr = calloc(mpi_size, sizeof(*module->remote_pbuffs.dbell_rkey_arr));
-	BKPAP_CHK_MALLOC(module->remote_pbuffs.dbell_rkey_arr, bkpap_remotepostbuf_wireup_err);
+	module->dplane.rma.remote.dbell_rkey_arr = calloc(mpi_size, sizeof(*module->dplane.rma.remote.dbell_rkey_arr));
+	BKPAP_CHK_MALLOC(module->dplane.rma.remote.dbell_rkey_arr, bkpap_remotepostbuf_wireup_err);
 	for (int i = 0; i < mpi_size; i++) {
 		if (i == mpi_rank)continue;
 		status = ucp_ep_rkey_unpack(
 			module->ucp_ep_arr[i],
 			agv_rkey_recv_buf + agv_displ_arr[i],
-			&module->remote_pbuffs.dbell_rkey_arr[i]);
+			&module->dplane.rma.remote.dbell_rkey_arr[i]);
 		BKPAP_CHK_UCP(status, bkpap_remotepostbuf_wireup_err);
 	}
 
 	ucp_rkey_buffer_release(postbuf_rkey_buffer);
+
+	bk_set_rma_dplane_ftbl(&module->dplane_ftbl);
+
 	BKPAP_OUTPUT("ucp postbuf wireup SUCCESS");
 bkpap_remotepostbuf_wireup_err:
 
@@ -195,97 +253,43 @@ bkpap_remotepostbuf_wireup_err:
 	return ret;
 }
 
-int mca_coll_bkpap_rma_send_postbuf(const void* buf,
-	struct ompi_datatype_t* dtype, int count, int dest, int slot,
-	struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
-	ucs_status_t status = UCS_OK;
-	ucs_status_ptr_t status_ptr = UCS_OK;
-	int ret = OMPI_SUCCESS;
-	int64_t dbell_put_buf = BKPAP_DBELL_SET;
-	uint64_t postbuf_addr;
-	size_t dtype_size, buf_size;
-
-	ucp_request_param_t req_attr = {
-		.op_attr_mask = UCP_OP_ATTR_FIELD_MEMORY_TYPE | UCP_OP_ATTR_FIELD_CALLBACK,
-		.memory_type = mca_coll_bkpap_component.ucs_postbuf_memory_type,
-		.user_data = NULL,
-		.cb.send = _bk_send_cb
-	};
-	postbuf_addr = (module->remote_pbuffs.buffer_addr_arr[dest]) + (slot * mca_coll_bkpap_component.postbuff_size);
-	ompi_datatype_type_size(dtype, &dtype_size);
-	buf_size = dtype_size * (ptrdiff_t)count;
-
-	status_ptr = ucp_put_nbx(
-		module->ucp_ep_arr[dest], buf, buf_size,
-		postbuf_addr,
-		module->remote_pbuffs.buffer_rkey_arr[dest],
-		&req_attr);
-	if (UCS_PTR_IS_ERR(status_ptr)) {
-		BKPAP_ERROR("rank %d, write rank %d postbuf returned error %d (%s)", ompi_comm_rank(comm), dest, UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
-		return OMPI_ERROR;
+void mca_coll_bkpap_rma_dplane_destroy(mca_coll_bkpap_rma_dplane_t* rma_dplane, mca_coll_bkpap_module_t* bkpap_module) {
+	for (int i = 0; i < bkpap_module->wsize; i++) {
+		if (NULL == bkpap_module->dplane.rma.remote.buffer_rkey_arr)break;
+		if (NULL == bkpap_module->dplane.rma.remote.buffer_rkey_arr[i])continue;
+		ucp_rkey_destroy(bkpap_module->dplane.rma.remote.buffer_rkey_arr[i]);
 	}
-	if (UCS_PTR_IS_PTR(status_ptr)) {
-		ucp_request_free(status_ptr);
+	free(bkpap_module->dplane.rma.remote.buffer_rkey_arr);
+	bkpap_module->dplane.rma.remote.buffer_rkey_arr = NULL;
+	free(bkpap_module->dplane.rma.remote.buffer_addr_arr);
+	bkpap_module->dplane.rma.remote.buffer_addr_arr = NULL;
+	for (int i = 0; i < bkpap_module->wsize; i++) {
+		if (NULL == bkpap_module->dplane.rma.remote.dbell_rkey_arr)break;
+		if (NULL == bkpap_module->dplane.rma.remote.dbell_rkey_arr[i]) continue;
+		ucp_rkey_destroy(bkpap_module->dplane.rma.remote.dbell_rkey_arr[i]);
 	}
+	free(bkpap_module->dplane.rma.remote.dbell_rkey_arr);
+	bkpap_module->dplane.rma.remote.dbell_rkey_arr = NULL;
+	free(bkpap_module->dplane.rma.remote.dbell_addr_arr);
+	bkpap_module->dplane.rma.remote.dbell_addr_arr = NULL;
 
-	status = ucp_worker_fence(mca_coll_bkpap_component.ucp_worker);
-	if (OPAL_UNLIKELY(UCS_OK != status)) {
-		BKPAP_ERROR("Worker fence failed");
-		return OMPI_ERROR;
+	if (NULL != bkpap_module->dplane.rma.local.postbuf_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, bkpap_module->dplane.rma.local.postbuf_h);
 	}
-
-	uint64_t dbell_addr = (module->remote_pbuffs.dbell_addr_arr[dest]) + (slot * sizeof(uint64_t));
-	req_attr.memory_type = UCS_MEMORY_TYPE_HOST;
-	status_ptr = ucp_put_nbx(
-		module->ucp_ep_arr[dest], &dbell_put_buf, sizeof(dbell_put_buf),
-		dbell_addr,
-		module->remote_pbuffs.dbell_rkey_arr[dest],
-		&req_attr);
-	if (UCS_PTR_IS_ERR(status_ptr)) {
-		BKPAP_ERROR("rank %d write rank %d debll returned error %d (%s)", ompi_comm_rank(comm), dest, UCS_PTR_STATUS(status_ptr), ucs_status_string(UCS_PTR_STATUS(status_ptr)));
-		return OMPI_ERROR;
+	bkpap_module->dplane.rma.local.postbuf_h = NULL;
+	bkpap_module->dplane.rma.local.postbuf_attrs.address = NULL;
+	void* free_local_pbuff = bkpap_module->dplane.rma.local.postbuf_attrs.address;
+	mca_coll_bkpap_postbuf_memory_t mem_t = mca_coll_bkpap_component.bk_postbuf_memory_type;
+	if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mem_t || BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mem_t) {
+		cudaFree(free_local_pbuff);
 	}
-	if (UCS_PTR_IS_PTR(status_ptr)) {
-		ucp_request_free(status_ptr);
+	else {
+		free(free_local_pbuff);
 	}
-
-	// TODO: should remove this, worker flush gets funky and can hang
-	status = bk_flush_ucp_worker();
-	if (UCS_OK != status) {
-		BKPAP_ERROR("Worker Flush Failed");
-		return OMPI_ERROR;
+	if (NULL != bkpap_module->dplane.rma.local.dbell_h) {
+		ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, bkpap_module->dplane.rma.local.dbell_h);
 	}
+	bkpap_module->dplane.rma.local.dbell_h = NULL;
+	bkpap_module->dplane.rma.local.dbell_attrs.address = NULL;
 
-	return ret;
-}
-
-int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count,
-	ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module) {
-	int ret = OMPI_SUCCESS;
-	volatile int64_t* dbells = module->local_pbuffs.rma.dbell_attrs.address;
-	uint8_t* pbuffs = module->local_pbuffs.rma.postbuf_attrs.address;
-
-	for (int i = 0; i < num_buffers; i++) {
-		while (BKPAP_DBELL_UNSET == dbells[i]) ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
-		void* recived_buffer = pbuffs + (i * mca_coll_bkpap_component.postbuff_size);
-
-		switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-		case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-		case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-			bk_gpu_op_reduce(op, recived_buffer, local_buf, count, dtype);
-			break;
-		case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-			ompi_op_reduce(op, recived_buffer, local_buf, count, dtype);
-			break;
-		default:
-			BKPAP_ERROR("Bad memory type, %d", mca_coll_bkpap_component.bk_postbuf_memory_type);
-			return OMPI_ERROR;
-			break;
-		}
-
-		dbells[i] = BKPAP_DBELL_UNSET;
-		BKPAP_OUTPUT("FINISH_LOCAL_REDUCE rank: %d, i: %d, [%ld %ld %ld], memtype %d", ompi_comm_rank(comm), i, dbells[0], dbells[1], dbells[2], mca_coll_bkpap_component.bk_postbuf_memory_type);
-	}
-
-	return ret;
 }

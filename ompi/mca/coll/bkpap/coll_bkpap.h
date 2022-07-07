@@ -77,7 +77,7 @@ typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
 	BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE = 2,
 	BKPAP_ALLREDUCE_ALG_RSA = 3,
-	BKPAP_ALLREDUCE_BASE_RSA_GPU = 4,
+	BKPAP_ALLREDUCE_ALG_BASE_RSA_GPU = 4,
 	BKPAP_ALLREDUCE_ALG_BINOMIAL = 5,
 	BKPAP_ALLREDUCE_ALG_CHAIN = 6,
 	BKPAP_ALLREDUCE_ALG_COUNT
@@ -96,6 +96,26 @@ typedef enum mca_coll_bkpap_dataplane_t {
 	BKPAP_DATAPLANE_COUNT
 }mca_coll_bkpap_dataplane_t;
 
+typedef struct mca_coll_bkpap_module_t mca_coll_bkpap_module_t; // forward decl
+/*Typedefs for the communication functions*/
+typedef int (*mca_coll_bkpap_dplane_send_to_early_ft)(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_send_to_late_ft)(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_recv_from_early_ft)(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_recv_from_late_ft)(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_sendrecv_from_early_ft)(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_sendrecv_from_late_ft)(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_sendrecv_ft)(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+typedef struct coll_bkpap_dplane_ftbl_t {
+	mca_coll_bkpap_dplane_send_to_early_ft send_to_early;
+	mca_coll_bkpap_dplane_send_to_late_ft send_to_late;
+	mca_coll_bkpap_dplane_recv_from_early_ft recv_from_early;
+	mca_coll_bkpap_dplane_recv_from_late_ft recv_from_late;
+	mca_coll_bkpap_dplane_sendrecv_from_early_ft  sendrecv_from_early;
+	mca_coll_bkpap_dplane_sendrecv_from_late_ft sendrecv_from_late;
+	mca_coll_bkpap_dplane_sendrecv_ft sendrecv;
+}coll_bkpap_dplane_ftbl_t;
+
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
 	bool enable_mpi_threads);
 
@@ -108,7 +128,6 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 	struct ompi_op_t* op,
 	struct ompi_communicator_t* comm,
 	mca_coll_base_module_t* module);
-
 
 // for programming/ucp_mem_map sanity, this is just
 typedef struct mca_coll_bkpap_local_syncstruct_t {
@@ -129,27 +148,26 @@ typedef struct mca_coll_bkpap_remote_syncstruct_t {
 
 } mca_coll_bkpap_remote_syncstruct_t;
 
-typedef struct mca_coll_bkpap_local_rma_postbuf_t {
-	int num_buffs;
-	ucp_mem_h dbell_h;
-	ucp_mem_attr_t dbell_attrs;
-	ucp_mem_h postbuf_h;
-	ucp_mem_attr_t postbuf_attrs;
-} mca_coll_bkpap_local_rma_postbuf_t;
+typedef struct mca_coll_bkpap_rma_dplane_t {
+	struct {
+		ucp_mem_h dbell_h;
+		ucp_mem_attr_t dbell_attrs;
+		ucp_mem_h postbuf_h;
+		ucp_mem_attr_t postbuf_attrs;
+	} local;
+	struct {
+		ucp_rkey_h* dbell_rkey_arr; // mpi_wsize array of dbell-buffers for each rank
+		uint64_t* dbell_addr_arr;
+		ucp_rkey_h* buffer_rkey_arr;// mpi_wsize array of postbuf-sized buffers for each rank
+		uint64_t* buffer_addr_arr;
+	} remote;
+} mca_coll_bkpap_rma_dplane_t;
 
-typedef struct mca_coll_bkpap_remote_rma_postbuf_t {
-	ucp_rkey_h* dbell_rkey_arr; // mpi_wsize array of dbell-buffers for each rank
-	uint64_t* dbell_addr_arr;
-	ucp_rkey_h* buffer_rkey_arr;// mpi_wsize array of postbuf-sized buffers for each rank
-	uint64_t* buffer_addr_arr;
-} mca_coll_bkpap_remote_rma_postbuf_t;
-
-typedef struct mca_coll_bkpap_local_tag_postbuf_t {
+typedef struct mca_coll_bkpap_tag_dplane_t {
 	void* buff_arr;
 	size_t buff_size;
-	int num_buffs;
 	mca_coll_bkpap_postbuf_memory_t mem_type;
-} mca_coll_bkpap_local_tag_postbuf_t;
+} mca_coll_bkpap_tag_dplane_t;
 
 typedef struct bkpap_mempool_buf {
 	void* buf;
@@ -186,15 +204,15 @@ typedef struct mca_coll_bkpap_module_t {
 	bkpap_mempool_t mempool[BKPAP_POSTBUF_MEMORY_TYPE_COUNT];
 
 	union {
-		mca_coll_bkpap_local_rma_postbuf_t rma;
-		mca_coll_bkpap_local_tag_postbuf_t tag;
-	} local_pbuffs;
-	mca_coll_bkpap_remote_rma_postbuf_t remote_pbuffs;
+		mca_coll_bkpap_rma_dplane_t rma;
+		mca_coll_bkpap_tag_dplane_t tag;
+	} dplane;
+	coll_bkpap_dplane_ftbl_t dplane_ftbl;
 
 	int num_syncstructures; // array of ss for pipelining
 	mca_coll_bkpap_local_syncstruct_t* local_syncstructure;
 	mca_coll_bkpap_remote_syncstruct_t* remote_syncstructure;
-	
+
 	cudaStream_t bk_cs[2];
 	void* host_pinned_buf;
 
@@ -247,28 +265,6 @@ int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_c
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, uint64_t arival_round_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
-int mca_coll_bkpap_rma_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_rma_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_rma_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
-int mca_coll_bkpap_tag_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
-int mca_coll_bkpap_tag_send_postbuf(const void* buf, struct ompi_datatype_t* dtype, int count, int dest, int slot, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_tag_reduce_postbufs(void* local_buf, struct ompi_datatype_t* dtype, int count, ompi_op_t* op, int num_buffers, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
-int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recvbuf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module); //, uint32_t segsize, int max_outstanding_reqs);
-int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
-
-// use in RSA alg, early is for the first process (pos<ex), and late is for the second (pos>ex)
-int mca_coll_bkpap_sendrecv(void* sbuf, int scount, void* rbuf, int rcount, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
-// this should be a more finalized set of communication primatives
-int mca_coll_bkpap_dplane_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_dplane_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_dplane_recv_from_early(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_dplane_recv_from_late(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_dplane_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int mca_coll_bkpap_dplane_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-
 int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
@@ -279,10 +275,34 @@ int coll_bkpap_papaware_chain_allreduce(const void* sbuf, void* rbuf, int count,
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module);
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);
 
-int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
 int bk_inter_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, uint32_t seg_size);
 int bk_intra_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count, struct ompi_datatype_t* datatype, int root, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, uint32_t count_by_segment, ompi_coll_tree_t* tree);
+
+int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module);
+int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recvbuf, int count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module); //, uint32_t segsize, int max_outstanding_reqs);
+int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int original_count, ompi_datatype_t* datatype, ompi_op_t* op, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module, ompi_coll_tree_t* tree, int count_by_segment, int max_outstanding_reqs);
+
+int mca_coll_bkpap_rma_dplane_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+void mca_coll_bkpap_rma_dplane_destroy(mca_coll_bkpap_rma_dplane_t* rma_dplane, mca_coll_bkpap_module_t* bkpap_module);
+int mca_coll_bkpap_tag_dplane_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
+void mca_coll_bkpap_tag_dplane_destroy(mca_coll_bkpap_tag_dplane_t* tag_dplane);
+
+int coll_bkpap_rma_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module); 
+int coll_bkpap_rma_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_recv_from_early(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_recv_from_late(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+
+int coll_bkpap_tag_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_recv_from_early(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_recv_from_late(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 
 END_C_DECLS
 #endif

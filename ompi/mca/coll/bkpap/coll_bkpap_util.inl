@@ -134,7 +134,7 @@ bk_abort_mempool_alloc:
     return ret;
 }
 
-static inline int bk_mempool_free(void* ptr, mca_coll_bkpap_postbuf_memory_t memtype, mca_coll_bkpap_module_t* bkpap_module) {
+static inline int bkpap_mempool_free(void* ptr, mca_coll_bkpap_postbuf_memory_t memtype, mca_coll_bkpap_module_t* bkpap_module) {
     bkpap_mempool_t* m = &bkpap_module->mempool[memtype];
     bkpap_mempool_buf_t* b = m->head;
     if (NULL == m->head) {

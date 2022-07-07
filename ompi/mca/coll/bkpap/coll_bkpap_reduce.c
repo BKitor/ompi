@@ -193,9 +193,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 		} /* end of for each segment */
 
 		/* clean up */
-		if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bk_rbuf_memtype, bkpap_module);
-		if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bk_rbuf_memtype, bkpap_module);
-		if (accumbuf_free != NULL) bk_mempool_free(accumbuf_free, bk_rbuf_memtype, bkpap_module);
+		if (inbuf_free[0] != NULL) bkpap_mempool_free(inbuf_free[0], bk_rbuf_memtype, bkpap_module);
+		if (inbuf_free[1] != NULL) bkpap_mempool_free(inbuf_free[1], bk_rbuf_memtype, bkpap_module);
+		if (accumbuf_free != NULL) bkpap_mempool_free(accumbuf_free, bk_rbuf_memtype, bkpap_module);
 	}
 
 	/* leaf nodes
@@ -316,9 +316,9 @@ error_hndl:  /* error handler */
 		}
 		ompi_coll_base_free_reqs(sreq, max_outstanding_reqs);
 	}
-	if (inbuf_free[0] != NULL) bk_mempool_free(inbuf_free[0], bk_rbuf_memtype, bkpap_module);
-	if (inbuf_free[1] != NULL) bk_mempool_free(inbuf_free[1], bk_rbuf_memtype, bkpap_module);
-	if (accumbuf_free != NULL) bk_mempool_free(accumbuf, bk_rbuf_memtype, bkpap_module);
+	if (inbuf_free[0] != NULL) bkpap_mempool_free(inbuf_free[0], bk_rbuf_memtype, bkpap_module);
+	if (inbuf_free[1] != NULL) bkpap_mempool_free(inbuf_free[1], bk_rbuf_memtype, bkpap_module);
+	if (accumbuf_free != NULL) bkpap_mempool_free(accumbuf, bk_rbuf_memtype, bkpap_module);
 	BKPAP_OUTPUT(
 		"ERROR_HNDL: node %d file %s line %d error %d\n",
 		rank, __FILE__, line, ret);

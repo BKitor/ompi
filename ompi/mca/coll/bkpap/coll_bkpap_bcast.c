@@ -30,7 +30,7 @@ int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count,
 	num_segments = (original_count + count_by_segment - 1) / count_by_segment;
 	realsegsize = (ptrdiff_t)count_by_segment * extent;
 
-	if (original_count * extent > mca_coll_bkpap_component.postbuff_size) {
+	if ((size_t)(extent * original_count) > mca_coll_bkpap_component.postbuff_size) {
 		BKPAP_ERROR("postbuf not large enough for bk bcast");
 		err = OMPI_ERROR;
 		goto error_hndl;
@@ -103,7 +103,6 @@ int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count,
 		   4) Compute number of elements in last segment.
 		   5) Send the last segment to children
 		*/
-		// TODO: change tmpbuf to be bk_mempool_alloc_host if not root/leaf
 
 		req_index = 0;
 		err = MCA_PML_CALL(irecv(bk_h_buf, count_by_segment, datatype,
@@ -167,8 +166,6 @@ int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count,
 			MPI_STATUSES_IGNORE);
 		if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 		cudaStreamSynchronize(bk_cs[0]);
-		// TODO: Add call to syncronize cuda stream
-		// TODO: free allocated tmpbuf
 	}
 
 	/* Leaf nodes */

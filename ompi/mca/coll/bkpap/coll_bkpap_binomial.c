@@ -13,6 +13,8 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 	int intra_rank = ompi_comm_rank(intra_comm);
 	int is_inter = (0 == intra_rank);
 	int vrank, mask = 1, p = -1, * c = NULL, tree_depth, nc = 0;
+	ptrdiff_t extent, lb;
+	ompi_datatype_get_extent(dtype, &lb, &extent);
 
 	if (is_inter)BKPAP_PROFILE("bkpap_bin_start", inter_rank);
 
@@ -22,6 +24,9 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 	if (is_inter)BKPAP_PROFILE("bkpap_bin_intra_reduce", inter_rank);
 
 	if (is_inter) {
+		mca_coll_bkpap_postbuf_memory_t tmp_recv_mem_t = mca_coll_bkpap_component.bk_postbuf_memory_type;
+		void* tmp_recv = NULL;
+		bkpap_mempool_alloc(&tmp_recv, extent * count, tmp_recv_mem_t, bkpap_module);
 		uint64_t tag, tag_mask;
 
 		int64_t arrival_pos = -1;
@@ -63,12 +68,11 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 
 		for (int i = 0; i < nc; i++) {
 			int peer = c[i];
-			void* tmp_recv = bkpap_module->local_pbuffs.tag.buff_arr; // TODO: replace with mempool
 			BK_BINOMIAL_MAKE_TAG(peer, 0, tag, tag_mask);
 			if (peer > arrival) {
 				BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (late) child: %d", inter_rank, arrival, peer);
 
-				ret = mca_coll_bkpap_dplane_recv_from_late(tmp_recv, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
+				ret = bkpap_module->dplane_ftbl.recv_from_late(tmp_recv, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_late failed", bkpap_abort_binomial_allreduce);
 			}
 			else {
@@ -79,7 +83,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 				}
 				BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (early) child: %d(%d)", inter_rank, arrival, peer, peer_rank);
 
-				ret = mca_coll_bkpap_dplane_recv_from_early(tmp_recv, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
+				ret = bkpap_module->dplane_ftbl.recv_from_early(tmp_recv, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_binomial_allreduce);
 			}
 			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype);
@@ -92,7 +96,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			if (p > arrival) {
 				BKPAP_OUTPUT("rank: %d, arrival: %d, send to (late) parent: %d", inter_rank, arrival, p);
 
-				ret = mca_coll_bkpap_dplane_send_to_late(rbuf, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
+				ret = bkpap_module->dplane_ftbl.send_to_late(rbuf, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_binomial_allreduce);
 			}
 			else {
@@ -103,7 +107,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 				}
 				BKPAP_OUTPUT("rank: %d, arrival: %d, send to (early) parent: %d(%d)", inter_rank, arrival, p, peer_rank);
 
-				ret = mca_coll_bkpap_dplane_send_to_early(rbuf, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
+				ret = bkpap_module->dplane_ftbl.send_to_early(rbuf, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_early failed", bkpap_abort_binomial_allreduce);
 			}
 		}
@@ -120,6 +124,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			mca_coll_bkpap_component.pipeline_segment_size);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "bk_opt_bc bcast failed", bkpap_abort_binomial_allreduce);
 
+		bkpap_mempool_free(tmp_recv, tmp_recv_mem_t, bkpap_module);
 		BKPAP_PROFILE("bkpap_bin_inter_bcast", inter_rank);
 
 	}
@@ -136,7 +141,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 	if (is_inter)BKPAP_PROFILE("bkpap_bin_end", inter_rank);
 
 	return OMPI_SUCCESS;
-	// return OPAL_ERR_NOT_IMPLEMENTED;
+
 bkpap_abort_binomial_allreduce:
 	free(c);
 	return ret;

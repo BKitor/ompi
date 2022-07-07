@@ -46,55 +46,12 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 		module->local_syncstructure = NULL;
 	}
 
-	for (int i = 0; i < module->wsize; i++) {
-		if (NULL == module->remote_pbuffs.buffer_rkey_arr)break;
-		if (NULL == module->remote_pbuffs.buffer_rkey_arr[i])continue;
-		ucp_rkey_destroy(module->remote_pbuffs.buffer_rkey_arr[i]);
-	}
-	free(module->remote_pbuffs.buffer_rkey_arr);
-	module->remote_pbuffs.buffer_rkey_arr = NULL;
-	free(module->remote_pbuffs.buffer_addr_arr);
-	module->remote_pbuffs.buffer_addr_arr = NULL;
-	for (int i = 0; i < module->wsize; i++) {
-		if (NULL == module->remote_pbuffs.dbell_rkey_arr)break;
-		if (NULL == module->remote_pbuffs.dbell_rkey_arr[i]) continue;
-		ucp_rkey_destroy(module->remote_pbuffs.dbell_rkey_arr[i]);
-	}
-	free(module->remote_pbuffs.dbell_rkey_arr);
-	module->remote_pbuffs.dbell_rkey_arr = NULL;
-	free(module->remote_pbuffs.dbell_addr_arr);
-	module->remote_pbuffs.dbell_addr_arr = NULL;
-
 	if (BKPAP_DATAPLANE_RMA == mca_coll_bkpap_component.dataplane_type) {
-		if (NULL != module->local_pbuffs.rma.postbuf_h) {
-			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.postbuf_h);
-		}
-		module->local_pbuffs.rma.postbuf_h = NULL;
-		module->local_pbuffs.rma.postbuf_attrs.address = NULL;
-		void* free_local_pbuff = module->local_pbuffs.rma.postbuf_attrs.address;
-		if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
-			|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type
-			) {
-			cudaFree(free_local_pbuff);
-		}
-		else {
-			free(free_local_pbuff);
-		}
-		if (NULL != module->local_pbuffs.rma.dbell_h) {
-			ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, module->local_pbuffs.rma.dbell_h);
-		}
-		module->local_pbuffs.rma.dbell_h = NULL;
-		module->local_pbuffs.rma.dbell_attrs.address = NULL;
+		mca_coll_bkpap_rma_dplane_destroy(&module->dplane.rma, module);
 	}
+
 	else if (BKPAP_DATAPLANE_TAG == mca_coll_bkpap_component.dataplane_type) {
-		if (BKPAP_POSTBUF_MEMORY_TYPE_CUDA == mca_coll_bkpap_component.bk_postbuf_memory_type
-			|| BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED == mca_coll_bkpap_component.bk_postbuf_memory_type) {
-			cudaFree(module->local_pbuffs.tag.buff_arr);
-		}
-		else {
-			free(module->local_pbuffs.tag.buff_arr);
-		}
-		module->local_pbuffs.tag.buff_arr = NULL;
+		mca_coll_bkpap_tag_dplane_destroy(&module->dplane.tag);
 	}
 
 	for (int32_t i = 0; i < module->wsize; i++) {
@@ -178,7 +135,6 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 		bkpap_module->super.base_data = data;
 	}
 
-
 	return OMPI_SUCCESS;
 
 bkpap_abort_module_enable:
@@ -236,7 +192,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 
 	switch (mca_coll_bkpap_component.dataplane_type) {
 	case BKPAP_DATAPLANE_RMA:
-		ret = mca_coll_bkpap_rma_wireup(bkpap_module, comm);
+		ret = mca_coll_bkpap_rma_dplane_wireup(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("RMA Wireup Failed, fallingback");
 			return ret;
@@ -244,7 +200,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		break;
 
 	case BKPAP_DATAPLANE_TAG:
-		ret = mca_coll_bkpap_tag_wireup(bkpap_module, comm);
+		ret = mca_coll_bkpap_tag_dplane_wireup(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("TAG Wireup Failed, fallingback");
 			return ret;
@@ -262,8 +218,6 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		cudaMallocHost(&bkpap_module->host_pinned_buf, mca_coll_bkpap_component.postbuff_size);
 	}
 
-	// TODO: refactor into 'bkpap_precalc_ktree/ktree_pipeline/rsa'
-	int k = mca_coll_bkpap_component.allreduce_k_value;
 	int num_syncstructures = 1;
 	size_t counter_arr_len = 0; // log_k(wsize);
 	size_t arrival_arr_len = 0; // wsize + wsize/k + wsize/k^2 + wsize/k^3 ...
@@ -271,24 +225,9 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	switch (alg) {
 	case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
 	case BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE:
-		num_syncstructures = 2;
-		counter_arr_len = 1;
-		arrival_arr_len = ompi_comm_size(comm);
-		arrival_arr_offsets_tmp = NULL;
-		break;
 	case BKPAP_ALLREDUCE_ALG_KTREE:
-		for (int i = 1; i < ompi_comm_size(comm); i *= k)
-			counter_arr_len++;
-		arrival_arr_offsets_tmp = calloc(counter_arr_len, sizeof(*arrival_arr_offsets_tmp));
-
-		for (size_t i = 0; i < counter_arr_len; i++) {
-			int k_pow_i = 1;
-			for (size_t j = 0; j < i; j++)
-				k_pow_i *= k;
-			arrival_arr_len += (ompi_comm_size(comm) / k_pow_i);
-			if ((i + 1) != counter_arr_len)
-				arrival_arr_offsets_tmp[i + 1] = arrival_arr_offsets_tmp[i] + (ompi_comm_size(comm) / k_pow_i);
-		}
+		BKPAP_ERROR("KTREE algorithms were removed");
+		return OMPI_ERR_NOT_SUPPORTED;
 		break;
 	case BKPAP_ALLREDUCE_ALG_RSA:
 	case BKPAP_ALLREDUCE_ALG_BINOMIAL:
@@ -298,14 +237,14 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		arrival_arr_len = ompi_comm_size(comm);
 		arrival_arr_offsets_tmp = NULL;
 		break;
-	case BKPAP_ALLREDUCE_BASE_RSA_GPU:
+	case BKPAP_ALLREDUCE_ALG_BASE_RSA_GPU:
 		num_syncstructures = 0;
 		counter_arr_len = 0;
 		arrival_arr_len = 0;
 		arrival_arr_offsets_tmp = NULL;
 		break;
 	default:
-		BKPAP_ERROR("Bad algorithms specified, failed to setup syncstructure");
+		BKPAP_ERROR("Bad algorithm %d specified, failed to setup syncstructure", alg);
 		return OMPI_ERROR;
 		break;
 	}
