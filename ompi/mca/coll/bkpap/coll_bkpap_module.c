@@ -3,22 +3,22 @@
 #include "coll_bkpap_util.inl"
 #include "opal/util/show_help.h"
 
-static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* module) {
-	memset(&(module->endof_super), 0, sizeof(*module) - sizeof(module->super));
+static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* bkpap_module) {
+	memset(&(bkpap_module->endof_super), 0, sizeof(*bkpap_module) - sizeof(bkpap_module->super));
 }
 
 // TODO: Fix issue of hanging on ucp_ep_destroy()
 // started after transitioning postbuf size from (postbuf_size * k) to (postbuf_size * (k-1)) 
-static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
-	cudaStreamDestroy(module->bk_cs[0]);
-	cudaStreamDestroy(module->bk_cs[1]);
-	cudaFreeHost(module->host_pinned_buf);
+static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* bkpap_module) {
+	cudaStreamDestroy(bkpap_module->bk_cs[0]);
+	cudaStreamDestroy(bkpap_module->bk_cs[1]);
+	cudaFreeHost(bkpap_module->host_pinned_buf);
 
-	bkpap_finalize_mempool(module);
+	bkpap_finalize_mempool(bkpap_module);
 
-	if (NULL != module->remote_syncstructure) {
-		for (int i = 0; i < module->num_syncstructures; i++) {
-			mca_coll_bkpap_remote_syncstruct_t* remote_ss_tmp = &(module->remote_syncstructure[i]);
+	if (NULL != bkpap_module->remote_syncstructure) {
+		for (int i = 0; i < bkpap_module->num_syncstructures; i++) {
+			mca_coll_bkpap_remote_syncstruct_t* remote_ss_tmp = &(bkpap_module->remote_syncstructure[i]);
 			free(remote_ss_tmp->ss_arrival_arr_offsets);
 			remote_ss_tmp->ss_arrival_arr_offsets = NULL;
 			if (NULL != remote_ss_tmp->arrival_arr_rkey)
@@ -30,51 +30,51 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* module) {
 			remote_ss_tmp->counter_rkey = NULL;
 			remote_ss_tmp->counter_addr = 0;
 		}
-		free(module->remote_syncstructure);
-		module->remote_syncstructure = NULL;
+		free(bkpap_module->remote_syncstructure);
+		bkpap_module->remote_syncstructure = NULL;
 	}
 
-	if (module->rank == 0) {
-		for (int i = 0; i < module->num_syncstructures; i++) {
-			mca_coll_bkpap_local_syncstruct_t* local_ss_tmp = &(module->local_syncstructure[i]);
+	if (bkpap_module->rank == 0) {
+		for (int i = 0; i < bkpap_module->num_syncstructures; i++) {
+			mca_coll_bkpap_local_syncstruct_t* local_ss_tmp = &(bkpap_module->local_syncstructure[i]);
 			if (NULL != local_ss_tmp->counter_mem_h)
 				ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, local_ss_tmp->counter_mem_h);
 			if (NULL != local_ss_tmp->arrival_arr_mem_h)
 				ucp_mem_unmap(mca_coll_bkpap_component.ucp_context, local_ss_tmp->arrival_arr_mem_h);
 		}
-		free(module->local_syncstructure);
-		module->local_syncstructure = NULL;
+		free(bkpap_module->local_syncstructure);
+		bkpap_module->local_syncstructure = NULL;
 	}
 
-	if (BKPAP_DATAPLANE_RMA == mca_coll_bkpap_component.dataplane_type) {
-		mca_coll_bkpap_rma_dplane_destroy(&module->dplane.rma, module);
+	if (BKPAP_DPLANE_RMA == bkpap_module->dplane_t){
+		mca_coll_bkpap_rma_dplane_destroy(&bkpap_module->dplane.rma, bkpap_module);
 	}
 
-	else if (BKPAP_DATAPLANE_TAG == mca_coll_bkpap_component.dataplane_type) {
-		mca_coll_bkpap_tag_dplane_destroy(&module->dplane.tag);
+	else if (BKPAP_DPLANE_TAG == mca_coll_bkpap_component.dplane_t) {
+		mca_coll_bkpap_tag_dplane_destroy(&bkpap_module->dplane.tag);
 	}
 
-	for (int32_t i = 0; i < module->wsize; i++) {
-		if (NULL == module->ucp_ep_arr) break;
-		if (NULL == module->ucp_ep_arr[i]) continue;
-		ucp_ep_destroy(module->ucp_ep_arr[i]);
+	for (int32_t i = 0; i < bkpap_module->wsize; i++) {
+		if (NULL == bkpap_module->ucp_ep_arr) break;
+		if (NULL == bkpap_module->ucp_ep_arr[i]) continue;
+		ucp_ep_destroy(bkpap_module->ucp_ep_arr[i]);
 	}
-	free(module->ucp_ep_arr);
-	module->ucp_ep_arr = NULL;
-	module->ucp_is_initialized = 0;
+	free(bkpap_module->ucp_ep_arr);
+	bkpap_module->ucp_ep_arr = NULL;
+	bkpap_module->ucp_is_initialized = 0;
 
-	if (NULL != module->intra_comm) {
-		ompi_comm_free(&(module->intra_comm));
-		module->intra_comm = NULL;
+	if (NULL != bkpap_module->intra_comm) {
+		ompi_comm_free(&(bkpap_module->intra_comm));
+		bkpap_module->intra_comm = NULL;
 	}
-	if (NULL != module->inter_comm) {
-		ompi_comm_free(&(module->inter_comm));
-		module->inter_comm = NULL;
+	if (NULL != bkpap_module->inter_comm) {
+		ompi_comm_free(&(bkpap_module->inter_comm));
+		bkpap_module->inter_comm = NULL;
 	}
 
-	OBJ_RELEASE(module->fallback_allreduce_module);
-	module->fallback_allreduce_module = NULL;
-	module->fallback_allreduce = NULL;
+	OBJ_RELEASE(bkpap_module->fallback_allreduce_module);
+	bkpap_module->fallback_allreduce_module = NULL;
+	bkpap_module->fallback_allreduce = NULL;
 }
 
 OBJ_CLASS_INSTANCE(mca_coll_bkpap_module_t, mca_coll_base_module_t,
@@ -134,6 +134,9 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 		data->cached_in_order_bintree = NULL;
 		bkpap_module->super.base_data = data;
 	}
+	
+	bkpap_module->dplane_t = mca_coll_bkpap_component.dplane_t;
+	bkpap_module->dplane_mem_t = mca_coll_bkpap_component.dplane_mem_t;
 
 	return OMPI_SUCCESS;
 
@@ -141,7 +144,7 @@ bkpap_abort_module_enable:
 	return OMPI_ERROR;
 }
 
-int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm) {
+int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* bkpap_module, struct ompi_communicator_t* comm) {
 	int ret = OMPI_SUCCESS;
 	opal_info_t comm_info;
 	OBJ_CONSTRUCT(&comm_info, opal_info_t);
@@ -149,19 +152,19 @@ int mca_coll_bkpap_wireup_hier_comms(mca_coll_bkpap_module_t* module, struct omp
 
 	mca_coll_base_module_t* tmp_ar_m = comm->c_coll->coll_allreduce_module;
 	mca_coll_base_module_allreduce_fn_t tmp_ar_f = comm->c_coll->coll_allreduce;
-	comm->c_coll->coll_allreduce = module->fallback_allreduce;
-	comm->c_coll->coll_allreduce_module = module->fallback_allreduce_module;
+	comm->c_coll->coll_allreduce = bkpap_module->fallback_allreduce;
+	comm->c_coll->coll_allreduce_module = bkpap_module->fallback_allreduce_module;
 
 	ret = opal_info_set(&comm_info, "ompi_comm_coll_preference", "tuned,^bkpap");
 	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
 	ret = ompi_comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0,
-		&comm_info, &(module->intra_comm));
+		&comm_info, &(bkpap_module->intra_comm));
 	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
-	int low_rank = ompi_comm_rank(module->intra_comm);
+	int low_rank = ompi_comm_rank(bkpap_module->intra_comm);
 
 	ret = opal_info_set(&comm_info, "ompi_comm_coll_preference", "tuned,^bkpap");
 	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
-	ret = ompi_comm_split_with_info(comm, low_rank, w_rank, &comm_info, &(module->inter_comm), false);
+	ret = ompi_comm_split_with_info(comm, low_rank, w_rank, &comm_info, &(bkpap_module->inter_comm), false);
 	BKPAP_CHK_MPI(ret, bkpap_wireup_hier_comms_err);
 
 	OBJ_DESTRUCT(&comm_info);
@@ -190,8 +193,8 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		return ret;
 	}
 
-	switch (mca_coll_bkpap_component.dataplane_type) {
-	case BKPAP_DATAPLANE_RMA:
+	switch (bkpap_module->dplane_t) {
+	case BKPAP_DPLANE_RMA:
 		ret = mca_coll_bkpap_rma_dplane_wireup(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("RMA Wireup Failed, fallingback");
@@ -199,7 +202,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		}
 		break;
 
-	case BKPAP_DATAPLANE_TAG:
+	case BKPAP_DPLANE_TAG:
 		ret = mca_coll_bkpap_tag_dplane_wireup(bkpap_module, comm);
 		if (OMPI_SUCCESS != ret) {
 			BKPAP_ERROR("TAG Wireup Failed, fallingback");
@@ -207,12 +210,12 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		}
 		break;
 	default:
-		BKPAP_ERROR("BAD DATAPLANE TYPE SELECTED %d, options are {0:RMA, 1:TAG}", mca_coll_bkpap_component.dataplane_type);
+		BKPAP_ERROR("BAD DATAPLANE TYPE SELECTED %d, options are {0:RMA, 1:TAG}", bkpap_module->dplane_t);
 		return OMPI_ERROR;
 		break;
 	}
 
-	if (BKPAP_POSTBUF_MEMORY_TYPE_HOST != mca_coll_bkpap_component.bk_postbuf_memory_type) {
+	if (BKPAP_DPLANE_MEM_TYPE_HOST != bkpap_module->dplane_mem_t) {
 		cudaStreamCreate(&bkpap_module->bk_cs[0]);
 		cudaStreamCreate(&bkpap_module->bk_cs[1]);
 		cudaMallocHost(&bkpap_module->host_pinned_buf, mca_coll_bkpap_component.postbuff_size);
@@ -266,7 +269,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 }
 
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module) {
-	for (int i = 0; i < BKPAP_POSTBUF_MEMORY_TYPE_COUNT; i++) {
+	for (int i = 0; i < BKPAP_DPLANE_MEM_TYPE_COUNT; i++) {
 		bkpap_mempool_t* m = &bkpap_module->mempool[i];
 		m->head = NULL;
 		m->memtype = i;
@@ -275,7 +278,7 @@ int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module) {
 }
 
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module) {
-	for (int i = 0; i < BKPAP_POSTBUF_MEMORY_TYPE_COUNT; i++) {
+	for (int i = 0; i < BKPAP_DPLANE_MEM_TYPE_COUNT; i++) {
 		bkpap_mempool_t* m = &bkpap_module->mempool[i];
 		bkpap_mempool_buf_t* b = m->head;
 		while (NULL != b) {

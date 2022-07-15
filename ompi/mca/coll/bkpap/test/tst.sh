@@ -2,6 +2,7 @@
 
 BK_NUM_PROC=4
 BK_MEM_TYPE="c"
+BK_DPLANE_T=1
 print_help() {
 	echo "Usage: -v <verbosity> -a <bkpap_alg> -m <memtype> -u -n -s"
 	echo "-v <verbosity> -- 6 for profiling, 9 for full output"
@@ -11,6 +12,8 @@ print_help() {
 	echo "-m <memory location> -- [h/c/m] for host/cuda/managed, default: $BK_MEM_TYPE"
 	echo "-s -- single run, sets msize to 1MB and OMB flags '-x 0 -i 1'"
 	echo "-p <num_procs> -- number of processes to run, default: $BK_NUM_PROC"
+	echo "-D run default"
+	echo "-d <dataplane> 0: RMA 1: TAG default: $BK_DPLANE_T"
 	exit
 }
 
@@ -22,7 +25,7 @@ if [ "$#" == "0" ]; then
 	print_help
 fi
 
-while getopts ":v:a:unm:dsp:" bk_opt; do
+while getopts ":v:a:unm:d:sp:D" bk_opt; do
 	case "${bk_opt}" in
 	v)
 		export OMPI_MCA_coll_bkpap_verbose="${OPTARG}"
@@ -70,7 +73,7 @@ while getopts ":v:a:unm:dsp:" bk_opt; do
 	n)
 		BK_RUN_NCCL=1
 		;;
-	d)
+	D)
 		BK_RUN_DEF=1
 		;;
 	s)
@@ -78,6 +81,9 @@ while getopts ":v:a:unm:dsp:" bk_opt; do
 		;;
 	p)
 		BK_NUM_PROC="${OPTARG}"
+		;;
+	d)
+		BK_DPLANE_T="${OPTARG}"
 		;;
 	:)
 		echo "ERROR: -${OPTARG} requires and argument."
@@ -90,15 +96,20 @@ while getopts ":v:a:unm:dsp:" bk_opt; do
 	esac
 done
 
+bk_exp_out() {
+	echo "bkpap_prio: $OMPI_MCA_coll_bkpap_priority"
+	echo "bkpap_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
+	echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
+	echo "bkpap_dataplane_type: $OMPI_MCA_coll_bkpap_dataplane_type"
+	echo "bkpap_seg_size: $OMPI_MCA_coll_bkpap_pipeline_segment_size"
+	echo "ucc_prio: $OMPI_MCA_coll_ucc_priority"
+	echo "ucc_enable: $OMPI_MCA_coll_ucc_enable"
+	echo "cuda_prio: $OMPI_MCA_coll_cuda_priority"
+}
+
 bk_cond_osu_tst() {
 	if [ "$1" == "1" ]; then
-		echo "bkpap_prio: $OMPI_MCA_coll_bkpap_priority"
-		echo "bkpap_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
-		echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
-		echo "bkpap_seg_size: $OMPI_MCA_coll_bkpap_pipeline_segment_size"
-		echo "ucc_prio: $OMPI_MCA_coll_ucc_priority"
-		echo "ucc_enable: $OMPI_MCA_coll_ucc_enable"
-		echo "cuda_prio: $OMPI_MCA_coll_cuda_priority"
+		bk_exp_out
 		mpirun -n $BK_NUM_PROC \
 			--display bind \
 			--bind-to pack \
@@ -149,7 +160,7 @@ export OMPI_MCA_coll_ucc_priority=20
 export OMPI_MCA_coll_ucc_enable=0
 export UCC_CL_BASIC_TLS=all
 
-export OMPI_MCA_coll_bkpap_dataplane_type=1
+export OMPI_MCA_coll_bkpap_dataplane_type=$BK_DPLANE_T
 export OMPI_MCA_coll_bkpap_postbuff_size=$BK_MAX_MSIZE
 export OMPI_MCA_coll_bkpap_pipeline_segment_size=$BK_MIN_MSIZE
 

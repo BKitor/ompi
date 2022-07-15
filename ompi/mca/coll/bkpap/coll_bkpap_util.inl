@@ -5,24 +5,24 @@
 #include <cuda_runtime.h>
 #pragma GCC diagnostic pop
 
-static inline int bk_alloc_pbufft(void** out_ptr, size_t len, mca_coll_bkpap_postbuf_memory_t memtype) {
+static inline int bk_alloc_dplane_mem_t(void** out_ptr, size_t len, bkpap_dplane_mem_t memtype) {
     int ret = OMPI_SUCCESS;
     switch (memtype) {
-    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+    case BKPAP_DPLANE_MEM_TYPE_HOST:
         *out_ptr = malloc(len);
         if (OPAL_UNLIKELY(NULL == *out_ptr)) {
             BKPAP_ERROR("bk_alloc_pbufft malloc returned null");
             ret = OMPI_ERR_OUT_OF_RESOURCE;
         }
         break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA:
         ret = cudaMalloc(out_ptr, len);
         if (OPAL_UNLIKELY(cudaSuccess != ret)) {
             BKPAP_ERROR("bk_alloc_pbufft cudaMalloc failed errocde %d", ret);
             ret = OMPI_ERROR;
         }
         break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
         ret = cudaMallocManaged(out_ptr, len, cudaMemAttachGlobal);
         if (OPAL_UNLIKELY(cudaSuccess != ret)) {
             BKPAP_ERROR("bk_alloc_pbufft cudaMalloc failed errocde %d", ret);
@@ -37,13 +37,13 @@ static inline int bk_alloc_pbufft(void** out_ptr, size_t len, mca_coll_bkpap_pos
     return ret;
 }
 
-static inline void bk_free_pbufft(void* ptr, mca_coll_bkpap_postbuf_memory_t memtype) {
+static inline void bk_free_pbufft(void* ptr, bkpap_dplane_mem_t memtype) {
     switch (memtype) {
-    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+    case BKPAP_DPLANE_MEM_TYPE_HOST:
         free(ptr);
         break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
         cudaFree(ptr);
         break;
     default:
@@ -80,7 +80,7 @@ static int bkpap_mempool_create_buf(bkpap_mempool_buf_t** b, size_t size, bkpap_
     tmp_b->allocated = false;
     tmp_b->next = NULL;
     tmp_b->num_passes = 0;
-    ret = bk_alloc_pbufft(&tmp_b->buf, size, mempool->memtype);
+    ret = bk_alloc_dplane_mem_t(&tmp_b->buf, size, mempool->memtype);
     BKPAP_CHK_MPI(ret, bk_abort_mempool_new_buf);
     tmp_b->size = size;
     *b = tmp_b;
@@ -98,7 +98,7 @@ static int bkpap_mempool_destroy_buf(bkpap_mempool_buf_t* b, bkpap_mempool_t* me
     return OMPI_SUCCESS;
 }
 
-static inline int bkpap_mempool_alloc(void** ptr, size_t size, mca_coll_bkpap_postbuf_memory_t memtype, mca_coll_bkpap_module_t* bkpap_module) {
+static inline int bkpap_mempool_alloc(void** ptr, size_t size, bkpap_dplane_mem_t memtype, mca_coll_bkpap_module_t* bkpap_module) {
     int ret = OMPI_SUCCESS;
     bkpap_mempool_t* m = &bkpap_module->mempool[memtype];
     bkpap_mempool_buf_t* b = m->head;
@@ -134,7 +134,7 @@ bk_abort_mempool_alloc:
     return ret;
 }
 
-static inline int bkpap_mempool_free(void* ptr, mca_coll_bkpap_postbuf_memory_t memtype, mca_coll_bkpap_module_t* bkpap_module) {
+static inline int bkpap_mempool_free(void* ptr, bkpap_dplane_mem_t memtype, mca_coll_bkpap_module_t* bkpap_module) {
     bkpap_mempool_t* m = &bkpap_module->mempool[memtype];
     bkpap_mempool_buf_t* b = m->head;
     if (NULL == m->head) {
@@ -154,7 +154,7 @@ static inline int bkpap_mempool_free(void* ptr, mca_coll_bkpap_postbuf_memory_t 
 
 static inline int bk_mempool_trim(mca_coll_bkpap_module_t* bkpap_module) {
     int ret = 0;
-    for (int i = 0; i < BKPAP_POSTBUF_MEMORY_TYPE_COUNT; i++) {
+    for (int i = 0; i < BKPAP_DPLANE_MEM_TYPE_COUNT; i++) {
         bkpap_mempool_t* m = &bkpap_module->mempool[i];
         bkpap_mempool_buf_t* b_prev, * b, * b_tmp;
         int pass_cutoff = 5;// should be tunable
@@ -192,35 +192,54 @@ bk_abort_mempool_trim:
 }
 
 // not bothering to check for managed memory, cause I'm probably not going to use it.
-static inline mca_coll_bkpap_postbuf_memory_t get_bk_memtype(void* buf) {
-    return (opal_cuda_check_one_buf(buf, NULL)) ? BKPAP_POSTBUF_MEMORY_TYPE_CUDA : BKPAP_POSTBUF_MEMORY_TYPE_HOST;
+static inline bkpap_dplane_mem_t get_bk_memtype(void* buf) {
+    return (opal_cuda_check_one_buf(buf, NULL)) ? BKPAP_DPLANE_MEM_TYPE_CUDA : BKPAP_DPLANE_MEM_TYPE_HOST;
 }
 
 static inline int bk_gpu_op_reduce(ompi_op_t* op, void* source, void* target, size_t full_count, ompi_datatype_t* dtype) {
-	if (OPAL_LIKELY(MPI_FLOAT == dtype && MPI_SUM == op)) { // is sum float
-		vec_add_float(source, target, full_count);
-	}
-	else {
-		BKPAP_ERROR("Falling back to ompi impl");
-		// FULL SEND TO A SEGV !!!
-		ompi_op_reduce(op, source, target, full_count, dtype);
-	}
-	return OMPI_SUCCESS;
+    if (OPAL_LIKELY(MPI_FLOAT == dtype && MPI_SUM == op)) { // is sum float
+        vec_add_float(source, target, full_count);
+    }
+    else {
+        BKPAP_ERROR("Falling back to ompi impl");
+        // FULL SEND TO A SEGV !!!
+        ompi_op_reduce(op, source, target, full_count, dtype);
+    }
+    return OMPI_SUCCESS;
 }
 
-static inline int mca_coll_bkpap_reduce_local(ompi_op_t* op, void* source, void* target, size_t count, ompi_datatype_t* dtype) {
-	switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-		bk_gpu_op_reduce(op, source, target, count, dtype);
-		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-		ompi_op_reduce(op, source, target, count, dtype);
-		break;
-	default:
-		BKPAP_ERROR("Bad memory type, %d", mca_coll_bkpap_component.bk_postbuf_memory_type);
-		return OMPI_ERROR;
-		break;
-	}
-	return OMPI_SUCCESS;
+static inline int mca_coll_bkpap_reduce_local(ompi_op_t* op, void* source, void* target, size_t count, ompi_datatype_t* dtype, mca_coll_bkpap_module_t* bkpap_module) {
+    switch (bkpap_module->dplane_mem_t) {
+    case BKPAP_DPLANE_MEM_TYPE_CUDA:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
+        bk_gpu_op_reduce(op, source, target, count, dtype);
+        break;
+    case BKPAP_DPLANE_MEM_TYPE_HOST:
+        ompi_op_reduce(op, source, target, count, dtype);
+        break;
+    default:
+        BKPAP_ERROR("Bad memory type, %d", bkpap_module->dplane_mem_t);
+        return OMPI_ERROR;
+        break;
+    }
+    return OMPI_SUCCESS;
+}
+
+static inline int mca_coll_bkpap_get_coll_recvbuf(void** buf, mca_coll_bkpap_module_t* bkpap_module) {
+    bkpap_dplane_t dplane = bkpap_module->dplane_t;
+    switch (dplane) {
+    case BKPAP_DPLANE_RMA:
+        *buf = bkpap_module->dplane.rma.local.postbuf_attrs.address;
+        return OMPI_SUCCESS;
+        break;
+    case BKPAP_DPLANE_TAG:
+        *buf = bkpap_module->dplane.tag.buff_arr;
+        return OMPI_SUCCESS;
+        break;
+        ;
+    default:
+        BKPAP_ERROR("get_coll_recvbuf failed");
+        break;
+    }
+    return OMPI_ERROR;
 }

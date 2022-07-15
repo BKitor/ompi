@@ -4,6 +4,27 @@
 #include "opal/util/bit_ops.h"
 #include "ompi/mca/coll/base/coll_base_functions.h"
 
+/*
+ * Under current desing, the root needs to recieve multiple messages,
+ * This creates a lot of overhead for pre-posted buffer on the root proc
+ * For a 256 wsize, log(256)*64MB would need to be reserved, (512MB data for each proc)
+ *
+ * modify tree so that the root has a parent (being last proc)
+ *
+ *
+ * Tree is built by taking ompi_coll_base_topo_build_kmtree(), and substracting 2 from each rank
+ * Example, comm_size=10
+ *    radix=2
+ *      0          		       6
+ *     /  \  \       		 /  \  \
+ *    4    2  1     r - 2	2     0  7
+ *    | \  |     	----> 	| \   |
+ *    6  5 3     			4  3  1
+ *    |						|
+ *    7						5
+ *
+*/
+
 int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype,
 	struct ompi_op_t* op, struct ompi_communicator_t* intra_comm,
 	struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module) {
@@ -24,9 +45,9 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 	if (is_inter)BKPAP_PROFILE("bkpap_bin_intra_reduce", inter_rank);
 
 	if (is_inter) {
-		mca_coll_bkpap_postbuf_memory_t tmp_recv_mem_t = mca_coll_bkpap_component.bk_postbuf_memory_type;
-		void* tmp_recv = NULL;
-		bkpap_mempool_alloc(&tmp_recv, extent * count, tmp_recv_mem_t, bkpap_module);
+		void* late_recv_buf = NULL, * early_recv_buf = NULL;
+		mca_coll_bkpap_get_coll_recvbuf(&late_recv_buf, bkpap_module);
+		bkpap_mempool_alloc(&early_recv_buf, extent * count, bkpap_module->dplane_mem_t, bkpap_module);
 		uint64_t tag, tag_mask;
 
 		int64_t arrival_pos = -1;
@@ -72,8 +93,16 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			if (peer > arrival) {
 				BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (late) child: %d", inter_rank, arrival, peer);
 
-				ret = bkpap_module->dplane_ftbl.recv_from_late(tmp_recv, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
+				ret = bkpap_module->dplane_ftbl.recv_from_late(late_recv_buf, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_late failed", bkpap_abort_binomial_allreduce);
+
+				// BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (late) child: %d, sample_val: %f", inter_rank, arrival, peer, ((float*)late_recv_buf)[0]);
+				// BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (late) child: %d", inter_rank, arrival, peer);
+
+				ret = mca_coll_bkpap_reduce_local(op, late_recv_buf, rbuf, count, dtype, bkpap_module);
+				BKPAP_CHK_MPI_MSG_LBL(ret, "reduce_local failed", bkpap_abort_binomial_allreduce);
+				// BKPAP_OUTPUT("rank: %d, arrival: %d, reduce_loca: %f", inter_rank, arrival, ((float*)rbuf)[0]);
+				ret = bkpap_module->dplane_ftbl.reset_late_recv_buf(bkpap_module);
 			}
 			else {
 				int peer_rank = -1;
@@ -83,11 +112,14 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 				}
 				BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (early) child: %d(%d)", inter_rank, arrival, peer, peer_rank);
 
-				ret = bkpap_module->dplane_ftbl.recv_from_early(tmp_recv, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
+				ret = bkpap_module->dplane_ftbl.recv_from_early(early_recv_buf, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_binomial_allreduce);
+				// BKPAP_OUTPUT("rank: %d, arrival: %d, recv from (early) child: %d(%d), sample: %f", inter_rank, arrival, peer, peer_rank, ((float*)early_recv_buf)[0]);
+
+				ret = mca_coll_bkpap_reduce_local(op, early_recv_buf, rbuf, count, dtype, bkpap_module);
+				BKPAP_CHK_MPI_MSG_LBL(ret, "reduce_local failed", bkpap_abort_binomial_allreduce);
+				BKPAP_OUTPUT("rank: %d, arrival: %d, reduce_loca: %f", inter_rank, arrival, ((float*)rbuf)[0]);
 			}
-			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype);
-			BKPAP_CHK_MPI_MSG_LBL(ret, "reduce_local failed", bkpap_abort_binomial_allreduce);
 		}
 		BKPAP_PROFILE("bkpap_bin_recv_child", inter_rank);
 
@@ -95,6 +127,7 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			BK_BINOMIAL_MAKE_TAG(arrival, 0, tag, tag_mask);
 			if (p > arrival) {
 				BKPAP_OUTPUT("rank: %d, arrival: %d, send to (late) parent: %d", inter_rank, arrival, p);
+				// BKPAP_OUTPUT("rank: %d, arrival: %d, send to (late) parent: %d, samlpe: %f", inter_rank, arrival, p, ((float*)rbuf)[0]);
 
 				ret = bkpap_module->dplane_ftbl.send_to_late(rbuf, count, dtype, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_binomial_allreduce);
@@ -105,10 +138,13 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 					ret = mca_coll_bkpap_get_rank_of_arrival(p, 0, bkpap_module->remote_syncstructure, bkpap_module, &peer_rank);
 					BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival parent failed", bkpap_abort_binomial_allreduce);
 				}
+				// BKPAP_OUTPUT("rank: %d, arrival: %d, send to (early) parent: %d(%d), sample: %f", inter_rank, arrival, p, peer_rank, ((float*)rbuf)[0]);
 				BKPAP_OUTPUT("rank: %d, arrival: %d, send to (early) parent: %d(%d)", inter_rank, arrival, p, peer_rank);
 
 				ret = bkpap_module->dplane_ftbl.send_to_early(rbuf, count, dtype, peer_rank, tag, tag_mask, inter_comm, bkpap_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_early failed", bkpap_abort_binomial_allreduce);
+
+				BKPAP_OUTPUT("DBG rank: %d, arrival: %d, send to (early) done", inter_rank, arrival);
 			}
 		}
 		BKPAP_PROFILE("bkpap_bin_send_parent", inter_rank);
@@ -124,9 +160,9 @@ int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int cou
 			mca_coll_bkpap_component.pipeline_segment_size);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "bk_opt_bc bcast failed", bkpap_abort_binomial_allreduce);
 
-		bkpap_mempool_free(tmp_recv, tmp_recv_mem_t, bkpap_module);
 		BKPAP_PROFILE("bkpap_bin_inter_bcast", inter_rank);
 
+		bkpap_mempool_free(early_recv_buf, bkpap_module->dplane_mem_t, bkpap_module);
 	}
 
 	ret = bk_intra_bcast(rbuf, count, dtype, 0, intra_comm, bkpap_module);

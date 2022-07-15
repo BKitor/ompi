@@ -40,7 +40,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
         ret = OMPI_ERR_NOT_SUPPORTED;
         goto bkpap_rsa_allreduce_exit;
     }
-    if (OPAL_UNLIKELY(BKPAP_DATAPLANE_TAG != mca_coll_bkpap_component.dataplane_type)) { // only support TAG dataplane
+    if (OPAL_UNLIKELY(BKPAP_DPLANE_TAG != bkpap_module->dplane_t)) { // only support TAG dataplane
         BKPAP_ERROR("RSA only supports TAG dataplane");
         ret = OMPI_ERR_NOT_SUPPORTED;
         goto bkpap_rsa_allreduce_exit;
@@ -52,9 +52,8 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
     if (is_inter)BKPAP_PROFILE("bkpap_rsa_intra_reduce", inter_rank);
 
     if (is_inter) {
-        mca_coll_bkpap_postbuf_memory_t recv_tmp_mem_t = mca_coll_bkpap_component.bk_postbuf_memory_type;
         void* recv_tmp = NULL;
-        bkpap_mempool_alloc(&recv_tmp, extent * count, recv_tmp_mem_t, bkpap_module);
+        mca_coll_bkpap_get_coll_recvbuf(&recv_tmp, bkpap_module);
 
         int64_t arrival_pos = -1;
         ret = mca_coll_bkpap_arrive_ss(inter_rank, 0, 0, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
@@ -98,7 +97,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
                 ret = bkpap_module->dplane_ftbl.sendrecv_from_late(send_ptr, send_count[round], recv_tmp, recv_count[round],
                     dtype, tag, tag_mask, inter_comm, bkpap_module);
                 BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_dplane_sendrecv_from_late failed", bkpap_rsa_allreduce_exit);
-                ret = mca_coll_bkpap_reduce_local(op, recv_tmp, recv_ptr, recv_count[round], dtype);
+                ret = mca_coll_bkpap_reduce_local(op, recv_tmp, recv_ptr, recv_count[round], dtype, bkpap_module);
                 BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_reduce_local failed", bkpap_rsa_allreduce_exit);
 
                 BKPAP_OUTPUT("RSA_REDUCE_EARLY_DONE: round: %d, arrival: %d, exchange_rank: %d",
@@ -123,7 +122,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
                 ret = bkpap_module->dplane_ftbl.sendrecv_from_early(send_ptr, send_count[round], recv_tmp, recv_count[round],
                     dtype, exchange_rank, tag, tag_mask, inter_comm, bkpap_module);
                 BKPAP_CHK_MPI_MSG_LBL(ret, "mca_coll_bkpap_dplane_sendrecv_from_early failed", bkpap_rsa_allreduce_exit);
-                ret = mca_coll_bkpap_reduce_local(op, recv_tmp, recv_ptr, recv_count[round], dtype);
+                ret = mca_coll_bkpap_reduce_local(op, recv_tmp, recv_ptr, recv_count[round], dtype, bkpap_module);
                 BKPAP_CHK_MPI_MSG_LBL(ret, "mca_coll_bkpap_reduce_local failed", bkpap_rsa_allreduce_exit);
 
                 BKPAP_OUTPUT("RSA_REDUCE_LATE_DONE: round: %d, arrival: %d, exchange_rank: %d",
@@ -155,7 +154,7 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
             BKPAP_PROFILE("bkpap_rsa_enter_sendrecv", inter_rank);
             // ret = mca_coll_bkpap_sendrecv(recv_ptr, recv_count[round], send_ptr, send_count[round],
             ret = bkpap_module->dplane_ftbl.sendrecv(recv_ptr, recv_count[round], send_ptr, send_count[round],
-                dtype, op, exchange_rank, tag, tag_mask, inter_comm, bkpap_module);
+                dtype, exchange_rank, tag, tag_mask, inter_comm, bkpap_module);
             BKPAP_PROFILE("bkpap_rsa_leave_sendrecv", inter_rank);
             BKPAP_CHK_MPI_MSG_LBL(ret, "bkpap_sendrecv failed", bkpap_rsa_allreduce_exit);
         }
@@ -166,7 +165,6 @@ static inline int coll_bkpap_papaware_rsa_allreduce(const void* sbuf, void* rbuf
             BKPAP_PROFILE("bkpap_rsa_reset_ss", inter_rank);
             BKPAP_CHK_MPI_MSG_LBL(ret, "reset_remote_ss failed", bkpap_rsa_allreduce_exit);
         }
-        bkpap_mempool_free(recv_tmp, recv_tmp_mem_t, bkpap_module);
     }
 
     // intra_bcast

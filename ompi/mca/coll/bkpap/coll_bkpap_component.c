@@ -40,9 +40,8 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .force_flat = 0,
     .priority = 35,
     .verbose = 0,
-    .dataplane_type = BKPAP_DATAPLANE_TAG,
-    .bk_postbuf_memory_type = BKPAP_POSTBUF_MEMORY_TYPE_HOST,
-    .ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST
+    .dplane_t = BKPAP_DPLANE_TAG,
+    .dplane_mem_t = BKPAP_DPLANE_MEM_TYPE_HOST,
 };
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_threads) {
@@ -54,22 +53,6 @@ int mca_coll_bkpap_init_query(bool enable_progress_threads, bool enable_mpi_thre
     //     return OMPI_ERR_NOT_SUPPORTED;
     // }
     mca_coll_bkpap_component.enable_threads = enable_mpi_threads;
-
-    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
-        mca_coll_bkpap_component.ucs_postbuf_memory_type = UCS_MEMORY_TYPE_HOST;
-        break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-        mca_coll_bkpap_component.ucs_postbuf_memory_type = UCS_MEMORY_TYPE_CUDA;
-        break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
-        mca_coll_bkpap_component.ucs_postbuf_memory_type = UCS_MEMORY_TYPE_CUDA_MANAGED;
-        break;
-    default:
-        BKPAP_ERROR("Unsuported memory type, options are [Host:0, Cuda:1, Managed:2]");
-        return OMPI_ERR_NOT_SUPPORTED;
-        break;
-    }
 
     return OMPI_SUCCESS;
 }
@@ -108,12 +91,12 @@ static int mca_coll_bkpap_register(void) {
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "postbuf_mem_type", "postbuf memory types, {0:Host, 1:CUDA, 2:CUDA Managed}",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.bk_postbuf_memory_type);
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.dplane_mem_t);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "dataplane_type", "UCX primative to use for dataplane, {0:RMA, 1:TAG}",
         MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_6,
-        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.dataplane_type);
+        MCA_BASE_VAR_SCOPE_READONLY, &mca_coll_bkpap_component.dplane_t);
 
     (void)mca_base_component_var_register(&mca_coll_bkpap_component.super.collm_version,
         "force_flat", "force allreduce alg to be flat instead of hierarchical",

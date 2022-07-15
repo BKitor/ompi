@@ -28,7 +28,8 @@ BEGIN_C_DECLS
 
 #define BKPAP_MSETZ(_obj) memset(&_obj, 0, sizeof(_obj)) 
 #define BKPAP_OUTPUT(_str,...) OPAL_OUTPUT_VERBOSE((9, mca_coll_bkpap_output,"BKOUT %s line %d: "_str, __FILE__, __LINE__, ##__VA_ARGS__))
-#define BKPAP_PROFILE(_str,...) OPAL_OUTPUT_VERBOSE((5, mca_coll_bkpap_output," BKPAP_PROFILE: %.8f rank: %d "_str, MPI_Wtime(), ##__VA_ARGS__))
+#define BKPAP_PROFILE(_str,...) 
+// #define BKPAP_PROFILE(_str,...) OPAL_OUTPUT_VERBOSE((5, mca_coll_bkpap_output," BKPAP_PROFILE: %.8f rank: %d "_str, MPI_Wtime(), ##__VA_ARGS__))
 #define BKPAP_ERROR(_str,...) BKPAP_OUTPUT("ERROR "_str, ##__VA_ARGS__)
 #define BKPAP_CHK_MALLOC(_buf, _lbl) if(OPAL_UNLIKELY(NULL == _buf)){BKPAP_ERROR("malloc "#_buf" returned NULL"); goto _lbl;}
 #define BKPAP_CHK_UCP(_status, _lbl) if(OPAL_UNLIKELY(UCS_OK != _status)){BKPAP_ERROR("UCP op failed, status %d (%s) going to %s", _status, ucs_status_string(_status), #_lbl); ret = OMPI_ERROR; goto _lbl;}
@@ -67,12 +68,13 @@ BEGIN_C_DECLS
 #define BK_BINOMIAL_TAG_SET_RANK(_tag) (_tag & ~(1ul))
 extern int mca_coll_bkpap_output;
 
-enum mca_coll_bkpap_dbell_state {
-	BKPAP_DBELL_UNSET = -1,
-	BKPAP_DBELL_SET = 1,
+enum bkpap_dbell_state {
+	BKPAP_DBELL_EMPTY = 0,
+	BKPAP_DBELL_INUSE = 1,
+	BKPAP_DBELL_FULL = 2,
 };
 
-typedef enum mca_coll_bkpap_allreduce_algs_t {
+typedef enum bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_KTREE = 0,
 	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
 	BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE = 2,
@@ -81,20 +83,20 @@ typedef enum mca_coll_bkpap_allreduce_algs_t {
 	BKPAP_ALLREDUCE_ALG_BINOMIAL = 5,
 	BKPAP_ALLREDUCE_ALG_CHAIN = 6,
 	BKPAP_ALLREDUCE_ALG_COUNT
-} mca_coll_bkpap_allreduce_algs_t;
+} bkpap_allreduce_algs_t;
 
-typedef enum mca_coll_bkpap_postbuf_memory_t {
-	BKPAP_POSTBUF_MEMORY_TYPE_HOST = 0,
-	BKPAP_POSTBUF_MEMORY_TYPE_CUDA = 1,
-	BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED = 2,
-	BKPAP_POSTBUF_MEMORY_TYPE_COUNT
-} mca_coll_bkpap_postbuf_memory_t;
+typedef enum bkpap_dplane_mem_t {
+	BKPAP_DPLANE_MEM_TYPE_HOST = 0,
+	BKPAP_DPLANE_MEM_TYPE_CUDA = 1,
+	BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED = 2,
+	BKPAP_DPLANE_MEM_TYPE_COUNT
+} bkpap_dplane_mem_t;
 
-typedef enum mca_coll_bkpap_dataplane_t {
-	BKPAP_DATAPLANE_RMA = 0,
-	BKPAP_DATAPLANE_TAG = 1,
-	BKPAP_DATAPLANE_COUNT
-}mca_coll_bkpap_dataplane_t;
+typedef enum bkpap_dplane_t {
+	BKPAP_DPLANE_RMA = 0,
+	BKPAP_DPLANE_TAG = 1,
+	BKPAP_DPLANE_COUNT
+} bkpap_dplane_t;
 
 typedef struct mca_coll_bkpap_module_t mca_coll_bkpap_module_t; // forward decl
 /*Typedefs for the communication functions*/
@@ -104,7 +106,8 @@ typedef int (*mca_coll_bkpap_dplane_recv_from_early_ft)(void* recv_buf, int recv
 typedef int (*mca_coll_bkpap_dplane_recv_from_late_ft)(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 typedef int (*mca_coll_bkpap_dplane_sendrecv_from_early_ft)(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 typedef int (*mca_coll_bkpap_dplane_sendrecv_from_late_ft)(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-typedef int (*mca_coll_bkpap_dplane_sendrecv_ft)(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_sendrecv_ft)(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+typedef int (*mca_coll_bkpap_dplane_reset_late_recv_ft)(mca_coll_bkpap_module_t* module);
 
 typedef struct coll_bkpap_dplane_ftbl_t {
 	mca_coll_bkpap_dplane_send_to_early_ft send_to_early;
@@ -114,6 +117,7 @@ typedef struct coll_bkpap_dplane_ftbl_t {
 	mca_coll_bkpap_dplane_sendrecv_from_early_ft  sendrecv_from_early;
 	mca_coll_bkpap_dplane_sendrecv_from_late_ft sendrecv_from_late;
 	mca_coll_bkpap_dplane_sendrecv_ft sendrecv;
+	mca_coll_bkpap_dplane_reset_late_recv_ft reset_late_recv_buf;
 }coll_bkpap_dplane_ftbl_t;
 
 int mca_coll_bkpap_init_query(bool enable_progress_threads,
@@ -166,7 +170,7 @@ typedef struct mca_coll_bkpap_rma_dplane_t {
 typedef struct mca_coll_bkpap_tag_dplane_t {
 	void* buff_arr;
 	size_t buff_size;
-	mca_coll_bkpap_postbuf_memory_t mem_type;
+	bkpap_dplane_mem_t mem_type;
 } mca_coll_bkpap_tag_dplane_t;
 
 typedef struct bkpap_mempool_buf {
@@ -179,7 +183,7 @@ typedef struct bkpap_mempool_buf {
 
 typedef struct bkpap_mempool {
 	bkpap_mempool_buf_t* head;
-	mca_coll_bkpap_postbuf_memory_t memtype;
+	bkpap_dplane_mem_t memtype;
 } bkpap_mempool_t;
 
 
@@ -201,8 +205,10 @@ typedef struct mca_coll_bkpap_module_t {
 
 	ucp_ep_h* ucp_ep_arr;
 
-	bkpap_mempool_t mempool[BKPAP_POSTBUF_MEMORY_TYPE_COUNT];
+	bkpap_mempool_t mempool[BKPAP_DPLANE_MEM_TYPE_COUNT];
 
+	bkpap_dplane_t dplane_t;
+	bkpap_dplane_mem_t dplane_mem_t;
 	union {
 		mca_coll_bkpap_rma_dplane_t rma;
 		mca_coll_bkpap_tag_dplane_t tag;
@@ -237,10 +243,8 @@ typedef struct mca_coll_bkpap_component_t {
 	int priority;
 	int verbose;
 
-	mca_coll_bkpap_dataplane_t dataplane_type;
-
-	mca_coll_bkpap_postbuf_memory_t bk_postbuf_memory_type;
-	ucs_memory_type_t ucs_postbuf_memory_type;
+	bkpap_dplane_t dplane_t;
+	bkpap_dplane_mem_t dplane_mem_t;
 } mca_coll_bkpap_component_t;
 
 OMPI_MODULE_DECLSPEC extern mca_coll_bkpap_component_t mca_coll_bkpap_component;
@@ -264,6 +268,7 @@ int mca_coll_bkpap_arrive_ss(int64_t ss_rank, uint64_t counter_offset, uint64_t 
 int mca_coll_bkpap_leave_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 int mca_coll_bkpap_get_rank_of_arrival(int arrival, uint64_t arival_round_offset, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* module, int* rank);
 int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int mca_coll_bkpap_get_last_arrival(ompi_communicator_t* comm, mca_coll_bkpap_remote_syncstruct_t* remote_ss, mca_coll_bkpap_module_t* bkpap_module, int* rank_ret);
 
 int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
@@ -288,13 +293,14 @@ void mca_coll_bkpap_rma_dplane_destroy(mca_coll_bkpap_rma_dplane_t* rma_dplane, 
 int mca_coll_bkpap_tag_dplane_wireup(mca_coll_bkpap_module_t* module, struct ompi_communicator_t* comm);
 void mca_coll_bkpap_tag_dplane_destroy(mca_coll_bkpap_tag_dplane_t* tag_dplane);
 
-int coll_bkpap_rma_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module); 
+int coll_bkpap_rma_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_rma_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_rma_recv_from_early(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_rma_recv_from_late(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_rma_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_rma_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int coll_bkpap_rma_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_rma_reset_late_recv_buf(mca_coll_bkpap_module_t* bkpap_module);
 
 int coll_bkpap_tag_send_to_early(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_tag_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
@@ -302,7 +308,8 @@ int coll_bkpap_tag_recv_from_early(void* recv_buf, int recv_count, struct ompi_d
 int coll_bkpap_tag_recv_from_late(void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_tag_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_tag_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
-int coll_bkpap_tag_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, ompi_op_t* op, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
+int coll_bkpap_tag_reset_late_recv_buf(mca_coll_bkpap_module_t* bkpap_module);
 
 END_C_DECLS
 #endif

@@ -30,8 +30,8 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 		UCP_PARAM_FIELD_REQUEST_SIZE |
 		UCP_PARAM_FIELD_REQUEST_INIT |
 		UCP_PARAM_FIELD_MT_WORKERS_SHARED;
-	ucp_params.features = UCP_FEATURE_AMO64 | UCP_FEATURE_RMA;
-	ucp_params.features |= (mca_coll_bkpap_component.dataplane_type == BKPAP_DATAPLANE_TAG) ? UCP_FEATURE_TAG : 0;
+	ucp_params.features = UCP_FEATURE_AMO64 | UCP_FEATURE_RMA | UCP_FEATURE_TAG;
+	// ucp_params.features |= (mca_coll_bkpap_component.dplane_t == BKPAP_DPLANE_TAG) ? UCP_FEATURE_TAG : 0;
 	ucp_params.request_size = sizeof(mca_coll_bkpap_req_t);
 	ucp_params.request_init = mca_coll_bkpap_req_init;
 	ucp_params.mt_workers_shared = 0; /* we do not need mt support for context
@@ -402,5 +402,46 @@ int mca_coll_bkpap_reset_remote_ss(mca_coll_bkpap_remote_syncstruct_t* remote_ss
 	}
 
 	free(put_buffer);
+	return ret;
+}
+
+// get nbx of (sizeof(int64) * wsize - 1)
+// for 0 -> wsize-2, find missing rank
+// return missing rank
+int mca_coll_bkpap_get_last_arrival(ompi_communicator_t* comm, mca_coll_bkpap_remote_syncstruct_t* remote_ss,
+	mca_coll_bkpap_module_t* bkpap_module, int* rank_ret) {
+
+	int ret = OMPI_SUCCESS;
+	ucs_status_ptr_t status_ptr;
+	ucs_status_t stat;
+	int wsize = ompi_comm_size(comm);
+
+	ucp_request_param_t get_params;
+	bk_fill_get_params(&get_params, bkpap_module);
+	get_params.memory_type = UCS_MEMORY_TYPE_HOST;
+
+	size_t arrival_arr_size = wsize * sizeof(int64_t);
+	int64_t* arrival_arr = malloc(arrival_arr_size);
+	BKPAP_CHK_MALLOC(arrival_arr, bk_abort_get_last_proc);
+
+	ucp_ep_h ss_ep = bkpap_module->ucp_ep_arr[0];
+	ucp_rkey_h ss_rkey = remote_ss->arrival_arr_rkey;
+	uint64_t ss_arrival_addr = remote_ss->arrival_arr_addr;
+
+	status_ptr = ucp_get_nbx(ss_ep, arrival_arr, arrival_arr_size, ss_arrival_addr, ss_rkey, &get_params);
+	stat = bk_poll_ucs_completion(status_ptr);
+	if (OPAL_UNLIKELY(UCS_OK != stat)) {
+		BKPAP_ERROR("wsize get nbx failed");
+		ret = OMPI_ERROR;
+		goto bk_abort_get_last_proc;
+	}
+
+	BKPAP_OUTPUT("THIS IS HALFWAY [%ld %ld %ld %ld %ld %ld %ld %ld]",
+		arrival_arr[0], arrival_arr[1], arrival_arr[2], arrival_arr[3],
+		arrival_arr[4], arrival_arr[5], arrival_arr[6], arrival_arr[7]);
+
+
+bk_abort_get_last_proc:
+	free(arrival_arr);
 	return ret;
 }

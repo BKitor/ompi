@@ -2,6 +2,7 @@
 
 BK_NUM_PROC=4
 BK_MEM_TYPE="c"
+BK_DPLANE_T=1
 print_help() {
 	echo "Usage: -v <verbosity> -a <bkpap_alg> -m <memtype> -u -n"
 	echo "-v <verbosity> -- 6 for profiling, 9 for full output"
@@ -10,6 +11,8 @@ print_help() {
 	echo "-n -- flag to run nccl"
 	echo "-m <memory location> -- [h/c/m] for host/cuda/managed, default: $BK_MEM_TYPE"
 	echo "-p <num_procs> -- number of processes to run, default: $BK_NUM_PROC"
+	echo "-D run default"
+	echo "-d <dataplane> 0: RMA 1: TAG default: $BK_DPLANE_T"
 	exit
 }
 
@@ -21,7 +24,7 @@ if [ "$#" == "0" ]; then
 	print_help
 fi
 
-while getopts ":v:a:unm:dp:" bk_opt; do
+while getopts ":v:a:unm:d:Dp:" bk_opt; do
 	case "${bk_opt}" in
 	v)
 		export OMPI_MCA_coll_bkpap_verbose="${OPTARG}"
@@ -70,10 +73,13 @@ while getopts ":v:a:unm:dp:" bk_opt; do
 		BK_RUN_NCCL=1
 		;;
 	d)
-		BK_RUN_DEF=1
+		BK_DPLANE_T="${OPTARG}"
 		;;
 	p)
 		BK_NUM_PROC="${OPTARG}"
+		;;
+	D)
+		BK_RUN_DEF=1
 		;;
 	:)
 		echo "ERROR: -${OPTARG} requires and argument."
@@ -89,6 +95,7 @@ done
 bk_exp_out() {
 	echo "bkpap_allreduce_alg: $OMPI_MCA_coll_bkpap_allreduce_alg"
 	echo "bkpap_postbuf_mem_type: $OMPI_MCA_coll_bkpap_postbuf_mem_type"
+	echo "bkpap_dataplane_type: $OMPI_MCA_coll_bkpap_dataplane_type"
 	echo "ucc_en: $OMPI_MCA_coll_ucc_enable"
 	echo "ucc_tl: $UCC_CL_BASIC_TLS"
 	echo "val_nf: $BK_VAL_FN"
@@ -137,8 +144,8 @@ export OMPI_MCA_coll_bkpap_priority=35
 export OMPI_MCA_coll_ucc_enable=0
 export UCC_CL_BASIC_TLS=all
 
-export OMPI_MCA_coll_bkpap_dataplane_type=1
-export OMPI_MCA_coll_bkpap_postbuff_size=$((1<<25))
+export OMPI_MCA_coll_bkpap_dataplane_type=$BK_DPLANE_T
+export OMPI_MCA_coll_bkpap_postbuff_size=$((1 << 25))
 export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 25))
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=0

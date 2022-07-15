@@ -255,21 +255,19 @@ int bk_inter_bcast(void* buf, int count, struct ompi_datatype_t* dtype,
 	size_t typelen;
 	ompi_datatype_type_size(dtype, &typelen);
 
-	mca_coll_bkpap_postbuf_memory_t  memtype = get_bk_memtype(buf);
+	bkpap_dplane_mem_t  memtype = get_bk_memtype(buf);
 
 	mca_coll_base_comm_t* data = bkpap_module->super.base_data;
 	COLL_BASE_UPDATE_PIPELINE(comm, &bkpap_module->super, root);
 	COLL_BASE_COMPUTED_SEGCOUNT(seg_size, typelen, seg_count);
 
 	switch (memtype) {
-	case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+	case BKPAP_DPLANE_MEM_TYPE_HOST:
 		ret = ompi_coll_base_bcast_intra_generic(buf, count, dtype, root, comm, &bkpap_module->super, seg_count, data->cached_pipeline);
 		break;
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-	case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+	case BKPAP_DPLANE_MEM_TYPE_CUDA:
+	case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
 		ret = coll_bkpap_bcast_intra_generic_gpu(buf, count, dtype, root, comm, bkpap_module, seg_count, data->cached_pipeline);
-		// ret = ompi_coll_base_bcast_intra_scatter_allgather_ring(buf, count, dtype, root, comm, &bkpap_module->super, seg_count);
-		// ret = ompi_coll_base_bcast_intra_generic(buf, count, dtype, root, comm, &bkpap_module->super, seg_count, data->cached_pipeline);
 		break;
 	default:
 		BKPAP_ERROR("Bad memtype in bkpap_inter_bcast");

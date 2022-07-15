@@ -41,7 +41,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
     ompi_datatype_get_extent(dtype, &lb, &extent);
     dsize = opal_datatype_span(&dtype->super, count, &gap);
 
-    mca_coll_bkpap_postbuf_memory_t bk_memtype = get_bk_memtype(rbuf);
+    bkpap_dplane_mem_t bk_memtype = get_bk_memtype(rbuf);
     char* tmp_buf = NULL, * tmp_buf_raw = NULL;
     err = bkpap_mempool_alloc((void**)&tmp_buf_raw, dsize, bk_memtype, bkpap_module);
     if (OMPI_SUCCESS != err)
@@ -95,7 +95,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
 
             /* Reduce on the right half of the buffers (result in rbuf) */
             mca_coll_bkpap_reduce_local(op, (char*)tmp_buf + (ptrdiff_t)count_lhalf * extent,
-                (char*)rbuf + count_lhalf * extent, count_rhalf, dtype);
+                (char*)rbuf + count_lhalf * extent, count_rhalf, dtype, bkpap_module);
             // mca_coll_bkpap_reduce_local
 
             /* Send the right half to the left neighbor */
@@ -124,7 +124,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
             if (MPI_SUCCESS != err) { goto cleanup_and_return; }
 
             /* Reduce on the right half of the buffers (result in rbuf) */
-            mca_coll_bkpap_reduce_local(op, tmp_buf, rbuf, count_lhalf, dtype);
+            mca_coll_bkpap_reduce_local(op, tmp_buf, rbuf, count_lhalf, dtype, bkpap_module);
 
             /* Recv the right half from the right neighbor */
             err = MCA_PML_CALL(recv((char*)rbuf + (ptrdiff_t)count_lhalf * extent,
@@ -212,7 +212,7 @@ int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(
             /* Local reduce: rbuf[] = tmp_buf[] <op> rbuf[] */
             mca_coll_bkpap_reduce_local(op, (char*)tmp_buf + (ptrdiff_t)rindex[step] * extent,
                 (char*)rbuf + (ptrdiff_t)rindex[step] * extent,
-                rcount[step], dtype);
+                rcount[step], dtype, bkpap_module);
             BKPAP_PROFILE("base_rsa_end_rs_reduce", rank);
 
             /* Move the current window to the received message */

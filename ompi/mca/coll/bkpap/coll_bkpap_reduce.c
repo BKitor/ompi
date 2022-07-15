@@ -23,7 +23,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 	int num_segments, line, ret, segindex, i, rank;
 	int recvcount, prevcount, inbi;
 	mca_coll_base_module_t* module = &(bkpap_module->super);
-	mca_coll_bkpap_postbuf_memory_t bk_rbuf_memtype = mca_coll_bkpap_component.bk_postbuf_memory_type;
+	bkpap_dplane_mem_t bk_rbuf_memtype = bkpap_module->dplane_mem_t;
 	
 
 	/**
@@ -365,14 +365,14 @@ int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct
     void* reduce_sbuf = (0 == rank) ? MPI_IN_PLACE : rbuf;
     void* reduce_rbuf = (0 == rank) ? rbuf : NULL;
 
-    switch (mca_coll_bkpap_component.bk_postbuf_memory_type) {
-    case BKPAP_POSTBUF_MEMORY_TYPE_HOST:
+    switch (bkpap_module->dplane_mem_t){
+    case BKPAP_DPLANE_MEM_TYPE_HOST:
         return comm->c_coll->coll_reduce(
             reduce_sbuf, reduce_rbuf, count, dtype, op, 0,
             comm, comm->c_coll->coll_reduce_module);
         break;
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA:
-    case BKPAP_POSTBUF_MEMORY_TYPE_CUDA_MANAGED:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA:
+    case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
         return mca_coll_bkpap_reduce_intra_inplace_binomial(reduce_sbuf, reduce_rbuf, count, dtype, op, 0, comm, bkpap_module);
         break;
     default:
