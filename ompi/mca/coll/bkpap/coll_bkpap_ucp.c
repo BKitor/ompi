@@ -4,6 +4,34 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/pml/pml.h"
 
+void* bk_background_progress_thread(void* args) {
+	volatile int* bk_t_flag = &mca_coll_bkpap_component.progress_thread_flag;
+	struct timespec tspec = {
+		.tv_sec = 0,
+		.tv_nsec = 5000,
+	};
+	while (true) {
+		switch (*bk_t_flag) {
+		case BK_PROGRESS_T_KILL:
+			BKPAP_OUTPUT("THIS THREAD IS OUT OF HERE!!!");
+			return NULL;
+			break;
+		case BK_PROGRESS_T_IDLE:
+			nanosleep(&tspec, NULL);
+			break;
+		case BK_PROGRESS_T_RUN:
+			ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+			break;
+		default:
+			BKPAP_ERROR("THREAD BAD FLAG %d", *bk_t_flag);
+			return (void*)-1;
+			break;
+		}
+	}
+
+	return (void*)-1;
+}
+
 void mca_coll_bkpap_req_init(void* request) {
 	mca_coll_bkpap_req_t* r = request;
 	r->ucs_status = UCS_INPROGRESS;
@@ -42,7 +70,8 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 	BKPAP_CHK_UCP(status, bkpap_init_ucp_err);
 
 	worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-	worker_params.thread_mode = (enable_mpi_threads == MPI_THREAD_SINGLE) ? UCS_THREAD_MODE_SINGLE : UCS_THREAD_MODE_MULTI;
+	// worker_params.thread_mode = (enable_mpi_threads == MPI_THREAD_SINGLE) ? UCS_THREAD_MODE_SINGLE : UCS_THREAD_MODE_MULTI;
+	worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
 	status = ucp_worker_create(mca_coll_bkpap_component.ucp_context, &worker_params, &mca_coll_bkpap_component.ucp_worker);
 	BKPAP_CHK_UCP(status, bkpap_init_ucp_err);
 
@@ -52,6 +81,12 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 		&mca_coll_bkpap_component.ucp_worker_addr_len
 	);
 	BKPAP_CHK_UCP(status, bkpap_init_ucp_err);
+
+	ret = pthread_create(&mca_coll_bkpap_component.progress_tid, NULL, bk_background_progress_thread, NULL);
+	if (0 != ret) {
+		BKPAP_ERROR("error %d creating background_progress_thread", ret);
+		ret = OMPI_ERROR;
+	}
 
 bkpap_init_ucp_err:
 	return ret;
@@ -422,23 +457,44 @@ int mca_coll_bkpap_get_last_arrival(ompi_communicator_t* comm, mca_coll_bkpap_re
 
 	size_t arrival_arr_size = wsize * sizeof(int64_t);
 	int64_t* arrival_arr = malloc(arrival_arr_size);
+	memset(arrival_arr, -1, arrival_arr_size);
 	BKPAP_CHK_MALLOC(arrival_arr, bk_abort_get_last_proc);
 
 	ucp_ep_h ss_ep = bkpap_module->ucp_ep_arr[0];
 	ucp_rkey_h ss_rkey = remote_ss->arrival_arr_rkey;
 	uint64_t ss_arrival_addr = remote_ss->arrival_arr_addr;
 
-	status_ptr = ucp_get_nbx(ss_ep, arrival_arr, arrival_arr_size, ss_arrival_addr, ss_rkey, &get_params);
-	stat = bk_poll_ucs_completion(status_ptr);
-	if (OPAL_UNLIKELY(UCS_OK != stat)) {
-		BKPAP_ERROR("wsize get nbx failed");
-		ret = OMPI_ERROR;
-		goto bk_abort_get_last_proc;
-	}
+	int missing_rank = -1;
+	int get_arrival_list_retry_set;
+	do {
+		get_arrival_list_retry_set = 0;
+		status_ptr = ucp_get_nbx(ss_ep, arrival_arr, arrival_arr_size, ss_arrival_addr, ss_rkey, &get_params);
+		stat = bk_poll_ucs_completion(status_ptr);
+		if (OPAL_UNLIKELY(UCS_OK != stat)) {
+			BKPAP_ERROR("wsize get nbx failed");
+			ret = OMPI_ERROR;
+			goto bk_abort_get_last_proc;
+		}
 
-	BKPAP_OUTPUT("THIS IS HALFWAY [%ld %ld %ld %ld %ld %ld %ld %ld]",
-		arrival_arr[0], arrival_arr[1], arrival_arr[2], arrival_arr[3],
-		arrival_arr[4], arrival_arr[5], arrival_arr[6], arrival_arr[7]);
+		// BKPAP_OUTPUT("FETCHED ARRAY rank: %d [%ld %ld %ld %ld %ld %ld %ld %ld]", ompi_comm_rank(comm),
+		// 	arrival_arr[0], arrival_arr[1], arrival_arr[2], arrival_arr[3],
+		// 	arrival_arr[4], arrival_arr[5], arrival_arr[6], arrival_arr[7]);
+
+		int64_t i_tracker = wsize - 1, arr_tracker = 0;
+
+		for (int i = 0; i < (wsize - 1); i++) {
+			if (-1 == arrival_arr[i]) {
+				get_arrival_list_retry_set = 1;
+				continue;
+			}
+			i_tracker ^= i;
+			arr_tracker ^= arrival_arr[i];
+		}
+		missing_rank = arr_tracker ^ i_tracker;
+	} while (get_arrival_list_retry_set);
+
+	// BKPAP_OUTPUT("CALCED MISSING RANK: %d", missing_rank);
+	*rank_ret = missing_rank;
 
 
 bk_abort_get_last_proc:

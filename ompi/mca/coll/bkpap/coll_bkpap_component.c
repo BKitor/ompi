@@ -32,6 +32,8 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
     .ucp_worker = NULL,
     .ucp_worker_addr = NULL,
     .ucp_worker_addr_len = 0,
+    .progress_tid = 0,
+    .progress_thread_flag = BK_PROGRESS_T_IDLE,
 
     .postbuff_size = BKPAP_POSTBUF_SIZE,
     .pipeline_segment_size = BKPAP_SEGMENT_SIZE,
@@ -114,5 +116,23 @@ static int mca_coll_bkpap_open(void) {
 }
 static int mca_coll_bkpap_close(void) {
     // TODO: Close UCX here?
+
+    mca_coll_bkpap_component.progress_thread_flag = BK_PROGRESS_T_KILL;
+    if (mca_coll_bkpap_component.progress_tid) {
+        int64_t t_retval;
+        pthread_join(mca_coll_bkpap_component.progress_tid, (void**) &t_retval);
+        BKPAP_OUTPUT("Joined thread with ret_val: %ld", t_retval);
+    }
+
+    if (mca_coll_bkpap_component.ucp_worker) {
+        ucp_worker_destroy(mca_coll_bkpap_component.ucp_worker);
+    }
+
+    if (mca_coll_bkpap_component.ucp_context) {
+        ucp_cleanup(mca_coll_bkpap_component.ucp_context);
+    }
+
+    BKPAP_OUTPUT("SEE YA LATER LOSERS!!!");
+    opal_output_close(mca_coll_bkpap_output);
     return OMPI_SUCCESS;
 }

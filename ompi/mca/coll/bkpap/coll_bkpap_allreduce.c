@@ -270,6 +270,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         bkpap_module->ucp_is_initialized = 1;
     }
 
+    mca_coll_bkpap_component.progress_thread_flag = BK_PROGRESS_T_IDLE;
+
     switch (alg) {
     case BKPAP_ALLREDUCE_ALG_KTREE:
         ret = coll_bkpap_papaware_ktree_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
@@ -301,6 +303,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 
     BKPAP_OUTPUT("rank: %d COMPLETE BKPAP ALLREDUCE", global_rank);
     bk_mempool_trim(bkpap_module);
+    mca_coll_bkpap_component.progress_thread_flag = BK_PROGRESS_T_RUN;
     return ret;
 
 bkpap_ar_abort:

@@ -226,6 +226,14 @@ typedef struct mca_coll_bkpap_module_t {
 
 OBJ_CLASS_DECLARATION(mca_coll_bkpap_module_t);
 
+typedef enum bk_progress_t_state_t {
+	BK_PROGRESS_T_RUN = 0,
+	BK_PROGRESS_T_KILL = 1,
+	BK_PROGRESS_T_IDLE = 2,
+}bk_progress_t_state_t;
+
+void* bk_background_progress_thread(void* args);
+
 typedef struct mca_coll_bkpap_component_t {
 	mca_coll_base_component_t super;
 
@@ -234,6 +242,9 @@ typedef struct mca_coll_bkpap_component_t {
 	ucp_worker_h ucp_worker;
 	ucp_address_t* ucp_worker_addr;
 	size_t ucp_worker_addr_len;
+
+	pthread_t progress_tid;
+	int progress_thread_flag;
 
 	size_t postbuff_size;
 	size_t pipeline_segment_size;
