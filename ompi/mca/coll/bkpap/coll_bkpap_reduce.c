@@ -135,8 +135,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 				   if there are no requests reqs[inbi ^1] will be
 				   MPI_REQUEST_NULL. */
 				   /* wait on data from last child for previous segment */
-				ret = ompi_request_wait(&reqs[inbi ^ 1],
-					MPI_STATUSES_IGNORE);
+				// ret = ompi_request_wait(&reqs[inbi ^ 1],
+				// 	MPI_STATUSES_IGNORE);
+					ret = bk_ompi_request_wait_all(&reqs[inbi ^ 1], 1);
 				if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 				local_op_buffer = inbuf[inbi ^ 1];
 				if (i > 0) {
@@ -263,7 +264,8 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 			creq = 0;
 			while (original_count > 0) {
 				/* wait on a posted request to complete */
-				ret = ompi_request_wait(&sreq[creq], MPI_STATUS_IGNORE);
+				// ret = ompi_request_wait(&sreq[creq], MPI_STATUS_IGNORE);
+				ret = bk_ompi_request_wait_all(&sreq[creq], 1);
 				if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 
 				if (original_count < count_by_segment) {
@@ -283,8 +285,9 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 			}
 
 			/* Wait on the remaining request to complete */
-			ret = ompi_request_wait_all(max_outstanding_reqs, sreq,
-				MPI_STATUSES_IGNORE);
+			// ret = ompi_request_wait_all(max_outstanding_reqs, sreq,
+			// 	MPI_STATUSES_IGNORE);
+				ret = bk_ompi_request_wait_all(sreq, max_outstanding_reqs);
 			if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 		}
 	}

@@ -8,7 +8,7 @@
 #pragma GCC diagnostic pop
 
 int coll_bkpap_rma_send_to_late(void* send_buf, int send_count, struct ompi_datatype_t* dtype,
-	int64_t tag, int64_t tag_mask, ompi_communicator_t* comm,
+	uint64_t tag, uint64_t tag_mask, ompi_communicator_t* comm,
 	mca_coll_bkpap_module_t* bkpap_module) {
 
 
@@ -16,8 +16,8 @@ int coll_bkpap_rma_send_to_late(void* send_buf, int send_count, struct ompi_data
 }
 
 int coll_bkpap_rma_recv_from_early(void* recv_buf, int recv_count,
-	struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
-	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	struct ompi_datatype_t* dtype, int peer_rank, uint64_t tag,
+	uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	return coll_bkpap_tag_recv_from_early(recv_buf, recv_count, dtype, peer_rank, tag, tag_mask, comm, bkpap_module);
 }
@@ -28,7 +28,7 @@ int coll_bkpap_rma_recv_from_early(void* recv_buf, int recv_count,
 // ucp_atomic_swap dbell <= DBELL_FULL
 int coll_bkpap_rma_send_to_early(void* send_buf, int send_count,
 	struct ompi_datatype_t* dtype, int peer_rank,
-	int64_t tag, int64_t tag_mask, ompi_communicator_t* comm,
+	uint64_t tag, uint64_t tag_mask, ompi_communicator_t* comm,
 	mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucs_status_ptr_t req_ptr;
@@ -89,7 +89,7 @@ int coll_bkpap_rma_send_to_early(void* send_buf, int send_count,
 
 // poll dbell until completion
 int coll_bkpap_rma_recv_from_late(void* recv_buf, int recv_count,
-	struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask,
+	struct ompi_datatype_t* dtype, uint64_t tag, uint64_t tag_mask,
 	ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	volatile int64_t* dbell = bkpap_module->dplane.rma.local.dbell_attrs.address;
@@ -108,22 +108,22 @@ int coll_bkpap_rma_recv_from_late(void* recv_buf, int recv_count,
 }
 
 int coll_bkpap_rma_sendrecv_from_early(void* send_buf, int send_count, void* recv_buf,
-	int recv_count, struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
-	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	int recv_count, struct ompi_datatype_t* dtype, int peer_rank, uint64_t tag,
+	uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	return coll_bkpap_tag_sendrecv_from_early(send_buf, send_count, recv_buf, recv_count, dtype, peer_rank, tag, tag_mask, comm, bkpap_module);
 }
 
 int coll_bkpap_rma_sendrecv_from_late(void* send_buf, int send_count, void* recv_buf,
-	int recv_count, struct ompi_datatype_t* dtype, int64_t tag,
-	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	int recv_count, struct ompi_datatype_t* dtype, uint64_t tag,
+	uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	return coll_bkpap_tag_sendrecv_from_late(send_buf, send_count, recv_buf, recv_count, dtype, tag, tag_mask, comm, bkpap_module);
 }
 
 int coll_bkpap_rma_sendrecv(void* sbuf, int send_count, void* rbuf, int recv_count,
-	struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
-	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	struct ompi_datatype_t* dtype, int peer_rank, uint64_t tag,
+	uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	return coll_bkpap_tag_sendrecv(sbuf, send_count, rbuf, recv_count, dtype, peer_rank, tag, tag_mask, comm, bkpap_module);
 }

@@ -12,7 +12,7 @@
 
 int coll_bkpap_tag_sendrecv(void* sbuf, int send_count, void* rbuf,
 	int recv_count, struct ompi_datatype_t* dtype,
-	int peer_rank, int64_t tag, int64_t tag_mask,
+	int peer_rank, uint64_t tag, uint64_t tag_mask,
 	ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucs_status_t stat = UCS_OK;
@@ -40,8 +40,8 @@ int coll_bkpap_tag_sendrecv(void* sbuf, int send_count, void* rbuf,
 
 // pair with recv_from_late, recv data
 int coll_bkpap_tag_send_to_early(void* send_buf, int send_count,
-	struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
-	int64_t tag_mask, ompi_communicator_t* comm,
+	struct ompi_datatype_t* dtype, int peer_rank, uint64_t tag,
+	uint64_t tag_mask, ompi_communicator_t* comm,
 	mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucp_ep_h ep = bkpap_module->ucp_ep_arr[peer_rank];
@@ -67,7 +67,7 @@ int coll_bkpap_tag_send_to_early(void* send_buf, int send_count,
 
 // pair with recv_from_early, recv rank->send data
 int coll_bkpap_tag_send_to_late(void* send_buf, int send_count,
-	struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask,
+	struct ompi_datatype_t* dtype, uint64_t tag, uint64_t tag_mask,
 	ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucp_worker_h w = mca_coll_bkpap_component.ucp_worker;
@@ -110,8 +110,8 @@ int coll_bkpap_tag_send_to_late(void* send_buf, int send_count,
 
 // pair with send_to_late, send rank->recv data
 int coll_bkpap_tag_recv_from_early(void* recv_buf, int recv_count,
-	struct ompi_datatype_t* dtype, int peer_rank, int64_t tag,
-	int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	struct ompi_datatype_t* dtype, int peer_rank, uint64_t tag,
+	uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucp_worker_h w = mca_coll_bkpap_component.ucp_worker;
 	ucs_status_ptr_t stat_ptr_arr[2];
@@ -141,9 +141,39 @@ int coll_bkpap_tag_recv_from_early(void* recv_buf, int recv_count,
 	return OMPI_SUCCESS;
 }
 
+int coll_bkpap_tag_prepost_recv(ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+
+	ucp_worker_h w = mca_coll_bkpap_component.ucp_worker;
+	ucp_request_param_t recv_params;
+	bk_fill_tag_recv_params(&recv_params, bkpap_module);
+
+	mca_coll_bkpap_tag_dplane_t* d = &bkpap_module->dplane.tag;
+
+	ucp_tag_t tag, tag_mask;
+	BK_BINOMIAL_MAKE_LAST_PROC_TAG(ompi_comm_size(comm), 0, tag, tag_mask);
+	tag = BK_BINOMIAL_TAG_SET_DATA(tag);
+
+	if (OPAL_UNLIKELY(NULL != d->prepost_req)) {
+		BKPAP_ERROR("prepost allready allocated, aborting");
+		return OMPI_ERROR;
+	}
+
+	d->prepost_req = ucp_tag_recv_nbx(w, d->buff_arr, d->buff_size, tag, tag_mask, &recv_params);
+
+	if (OPAL_UNLIKELY(UCS_PTR_IS_ERR(d->prepost_req))) {
+		ucs_status_t s = UCS_PTR_STATUS(d->prepost_req);
+		BKPAP_ERROR("preposting recv failed, %d, (%s)", s, ucs_status_string(s));
+		return OMPI_ERROR;
+	}
+
+	// BKPAP_OUTPUT("rank: %d PREPOSTING BUFFER! (%lu) %p", ompi_comm_rank(comm), tag, d->prepost_req);
+	d->prepost_req_set = 1;
+	return OMPI_SUCCESS;
+}
+
 // pair with send_to_early, recv data
 int coll_bkpap_tag_recv_from_late(void* recv_buf, int recv_count,
-	struct ompi_datatype_t* dtype, int64_t tag, int64_t tag_mask,
+	struct ompi_datatype_t* dtype, uint64_t tag, uint64_t tag_mask,
 	ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucp_worker_h w = mca_coll_bkpap_component.ucp_worker;
@@ -152,12 +182,21 @@ int coll_bkpap_tag_recv_from_late(void* recv_buf, int recv_count,
 	ucp_request_param_t recv_params;
 	ptrdiff_t extent, lb;
 
-	bk_fill_tag_recv_params(&recv_params, bkpap_module);
-	ompi_datatype_get_extent(dtype, &lb, &extent);
-	size_t recv_byte_count = (recv_count * extent);
-
 	tag = BK_BINOMIAL_TAG_SET_DATA(tag);
-	stat_ptr = ucp_tag_recv_nbx(w, recv_buf, recv_byte_count, tag, tag_mask, &recv_params);
+
+	if (BK_BINOMIAL_LAST_PROC_TAG(ompi_comm_size(comm), 0) == tag) {
+		stat_ptr = bkpap_module->dplane.tag.prepost_req;
+		bkpap_module->dplane.tag.prepost_req_set = 0;
+		bkpap_module->dplane.tag.prepost_req = NULL;
+	}
+	else {
+		bk_fill_tag_recv_params(&recv_params, bkpap_module);
+		ompi_datatype_get_extent(dtype, &lb, &extent);
+		size_t recv_byte_count = (recv_count * extent);
+
+		stat_ptr = ucp_tag_recv_nbx(w, recv_buf, recv_byte_count, tag, tag_mask, &recv_params);
+	}
+
 	stat = bk_poll_ucs_completion(stat_ptr);
 	if (OPAL_UNLIKELY(UCS_OK != stat)) {
 		BKPAP_ERROR("tag_recv_from_late tag recv failed: %d (%s)", stat, ucs_status_string(stat));
@@ -169,7 +208,7 @@ int coll_bkpap_tag_recv_from_late(void* recv_buf, int recv_count,
 
 int coll_bkpap_tag_sendrecv_from_early(void* send_buf, int send_count,
 	void* recv_buf, int recv_count, struct ompi_datatype_t* dtype, int peer_rank,
-	int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	uint64_t tag, uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucs_status_t stat = UCS_OK;
 	ucs_status_ptr_t status_req_arr[3];
@@ -203,7 +242,7 @@ int coll_bkpap_tag_sendrecv_from_early(void* send_buf, int send_count,
 
 int coll_bkpap_tag_sendrecv_from_late(void* send_buf, int send_count,
 	void* recv_buf, int recv_count, struct ompi_datatype_t* dtype,
-	int64_t tag, int64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
+	uint64_t tag, uint64_t tag_mask, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
 
 	ucs_status_t stat = UCS_OK;
 	ucs_status_ptr_t rank_recv_req, data_req_arr[2];
@@ -279,6 +318,14 @@ bk_abort_tag_wireup:
 }
 
 void mca_coll_bkpap_tag_dplane_destroy(mca_coll_bkpap_tag_dplane_t* tag_dplane) {
-	// if (NULL != tag_dplane->buff_arr)
-	// 	bk_free_pbufft(tag_dplane->buff_arr, tag_dplane->mem_type);
+	if (NULL != tag_dplane->prepost_req) {
+		ucp_request_cancel(mca_coll_bkpap_component.ucp_worker, tag_dplane->prepost_req);
+		ucp_request_free(tag_dplane->prepost_req);
+		tag_dplane->prepost_req = NULL;
+	}
+
+	if (NULL != tag_dplane->buff_arr)
+		bk_free_pbufft(tag_dplane->buff_arr, tag_dplane->mem_type);
+
+
 }

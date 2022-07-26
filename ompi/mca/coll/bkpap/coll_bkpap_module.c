@@ -264,6 +264,10 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	}
 	bkpap_module->num_syncstructures = num_syncstructures;
 	arrival_arr_offsets_tmp = NULL;
+	
+	if(BKPAP_ALLREDUCE_ALG_CHAIN == alg){
+		bk_launch_background_thread();
+	}
 
 	return ret;
 }

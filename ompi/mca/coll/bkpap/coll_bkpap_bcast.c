@@ -282,7 +282,9 @@ bkpap_abort_inter_gpu:
 }
 
 int bk_intra_bcast(void* buf, int count, struct ompi_datatype_t* dtype, int root, ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
-	int ret = OMPI_SUCCESS;
-	ret = ompi_coll_base_bcast_intra_scatter_allgather_ring(buf, count, dtype, root, comm, &bkpap_module->super, 0);
-	return ret;
+	if (ompi_comm_size(comm) <= 1)
+		return OMPI_SUCCESS;
+
+	return ompi_coll_base_bcast_intra_knomial(buf, count, dtype, root, comm, &bkpap_module->super, 0, 4);
+
 }

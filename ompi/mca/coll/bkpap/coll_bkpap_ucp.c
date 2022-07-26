@@ -32,6 +32,16 @@ void* bk_background_progress_thread(void* args) {
 	return (void*)-1;
 }
 
+int bk_launch_background_thread() {
+	int ret = pthread_create(&mca_coll_bkpap_component.progress_tid, NULL, bk_background_progress_thread, NULL);
+	if (0 != ret) {
+		BKPAP_ERROR("error %d creating background_progress_thread", ret);
+		return OMPI_ERROR;
+	}
+
+	return OMPI_SUCCESS;
+}
+
 void mca_coll_bkpap_req_init(void* request) {
 	mca_coll_bkpap_req_t* r = request;
 	r->ucs_status = UCS_INPROGRESS;
@@ -81,12 +91,6 @@ int mca_coll_bkpap_init_ucx(int enable_mpi_threads) {
 		&mca_coll_bkpap_component.ucp_worker_addr_len
 	);
 	BKPAP_CHK_UCP(status, bkpap_init_ucp_err);
-
-	ret = pthread_create(&mca_coll_bkpap_component.progress_tid, NULL, bk_background_progress_thread, NULL);
-	if (0 != ret) {
-		BKPAP_ERROR("error %d creating background_progress_thread", ret);
-		ret = OMPI_ERROR;
-	}
 
 bkpap_init_ucp_err:
 	return ret;

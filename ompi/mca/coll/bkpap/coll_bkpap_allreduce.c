@@ -264,9 +264,14 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
             }
 #endif
 
+            if (BKPAP_DPLANE_TAG == bkpap_module->dplane_t
+                && BKPAP_ALLREDUCE_ALG_CHAIN == alg) {
+                ret = coll_bkpap_tag_prepost_recv(ss_inter_comm, bkpap_module);
+                BKPAP_CHK_MPI_MSG_LBL(ret, "prepost failed", bkpap_ar_abort);
+            }
         }
         ret = bkpap_init_mempool(bkpap_module);
-        BKPAP_CHK_MPI(ret, bkpap_ar_abort);
+        BKPAP_CHK_MPI_MSG_LBL(ret, "bk init_mempool failed", bkpap_ar_abort);
         bkpap_module->ucp_is_initialized = 1;
     }
 
