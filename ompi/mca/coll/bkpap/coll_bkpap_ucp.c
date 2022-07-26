@@ -10,6 +10,16 @@ void* bk_background_progress_thread(void* args) {
 		.tv_sec = 0,
 		.tv_nsec = 5000,
 	};
+
+	bk_t_args_t* bk_args = args;
+	if (bk_args->set_cu_ctx) {
+		CUresult cu_ret = cuCtxSetCurrent(bk_args->cu_ctx);
+		if (CUDA_SUCCESS != cu_ret) {
+			BKPAP_ERROR("couldn't set cuda context, cu error: %d", cu_ret);
+			return (void*)-1;
+		}
+	}
+
 	while (true) {
 		switch (*bk_t_flag) {
 		case BK_PROGRESS_T_KILL:
@@ -33,7 +43,18 @@ void* bk_background_progress_thread(void* args) {
 }
 
 int bk_launch_background_thread() {
-	int ret = pthread_create(&mca_coll_bkpap_component.progress_tid, NULL, bk_background_progress_thread, NULL);
+
+	bk_t_args_t* bk_args = &mca_coll_bkpap_component.bk_t_args;
+	if (BKPAP_DPLANE_MEM_TYPE_HOST != mca_coll_bkpap_component.dplane_mem_t) {
+		CUresult cu_ret = cuCtxGetCurrent(&bk_args->cu_ctx);
+		bk_args->set_cu_ctx = 1;
+		if(CUDA_SUCCESS != cu_ret){
+			BKPAP_ERROR("couldn't get cuda context, cu error: %d", cu_ret);
+			return OMPI_ERROR;
+		}
+	}
+
+	int ret = pthread_create(&mca_coll_bkpap_component.progress_tid, NULL, bk_background_progress_thread, bk_args);
 	if (0 != ret) {
 		BKPAP_ERROR("error %d creating background_progress_thread", ret);
 		return OMPI_ERROR;

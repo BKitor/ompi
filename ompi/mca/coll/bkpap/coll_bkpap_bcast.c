@@ -207,7 +207,7 @@ int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count,
 		err = ompi_request_wait(&recv_reqs[req_index], MPI_STATUS_IGNORE);
 		if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 		size_t f_rsize = original_count - (ptrdiff_t)(num_segments - 1) * count_by_segment;
-		cudaMemcpyAsync(tmpbuf, bk_h_buf, f_rsize, cudaMemcpyHostToDevice, bk_cs[0]);
+		cudaMemcpyAsync(tmpbuf, bk_h_buf, f_rsize * extent, cudaMemcpyHostToDevice, bk_cs[0]);
 		cudaStreamSynchronize(bk_cs[0]);
 	}
 

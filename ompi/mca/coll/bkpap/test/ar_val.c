@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
     }
 
     for (int i = 0; i < 8; i++) {
-        int err = 0;
+        int err = 0, f_err = -1;
         for (int j = 0; j < count; j++) {
             rcv_bff[j] = 0;
             snd_bff[j] = (float)rank * i;
@@ -54,8 +54,10 @@ int main(int argc, char* argv[]) {
         BK_CHK_MPI_GT_LBL(ret, "MPI_Allreduce failed", main_abort);
 
         for (int j = 0; j < count; j++) {
-            if (snd_bff[j] != g_sum * i)
+            if (snd_bff[j] != g_sum * i){
+				if(-1 == f_err) f_err = j;
                 err = j;
+			}
             if (err)
                 break;
         }

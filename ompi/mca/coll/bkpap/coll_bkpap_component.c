@@ -27,13 +27,14 @@ mca_coll_bkpap_component_t mca_coll_bkpap_component = {
         .collm_comm_query = mca_coll_bkpap_comm_query,
     },
 
-    .enable_threads = MPI_THREAD_SINGLE,
+	.enable_threads = MPI_THREAD_MULTIPLE,
     .ucp_context = NULL,
     .ucp_worker = NULL,
     .ucp_worker_addr = NULL,
     .ucp_worker_addr_len = 0,
     .progress_tid = 0,
     .progress_thread_flag = BK_PROGRESS_T_IDLE,
+    .bk_t_args = {0},
 
     .postbuff_size = BKPAP_POSTBUF_SIZE,
     .pipeline_segment_size = BKPAP_SEGMENT_SIZE,

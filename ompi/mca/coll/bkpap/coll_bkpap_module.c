@@ -46,7 +46,7 @@ static void mca_coll_bkpap_module_destruct(mca_coll_bkpap_module_t* bkpap_module
 		bkpap_module->local_syncstructure = NULL;
 	}
 
-	if (BKPAP_DPLANE_RMA == bkpap_module->dplane_t){
+	if (BKPAP_DPLANE_RMA == bkpap_module->dplane_t) {
 		mca_coll_bkpap_rma_dplane_destroy(&bkpap_module->dplane.rma, bkpap_module);
 	}
 
@@ -134,7 +134,7 @@ int mca_coll_bkpap_module_enable(mca_coll_base_module_t* module, struct ompi_com
 		data->cached_in_order_bintree = NULL;
 		bkpap_module->super.base_data = data;
 	}
-	
+
 	bkpap_module->dplane_t = mca_coll_bkpap_component.dplane_t;
 	bkpap_module->dplane_mem_t = mca_coll_bkpap_component.dplane_mem_t;
 
@@ -216,9 +216,22 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	}
 
 	if (BKPAP_DPLANE_MEM_TYPE_HOST != bkpap_module->dplane_mem_t) {
-		cudaStreamCreate(&bkpap_module->bk_cs[0]);
-		cudaStreamCreate(&bkpap_module->bk_cs[1]);
-		cudaMallocHost(&bkpap_module->host_pinned_buf, mca_coll_bkpap_component.postbuff_size);
+		CUresult  cu_res = CUDA_SUCCESS;
+		cu_res = cudaStreamCreate(&bkpap_module->bk_cs[0]);
+		if (CUDA_SUCCESS != cu_res) {
+			BKPAP_ERROR("failed to creat cuda stream: %d", cu_res);
+			return OMPI_ERROR;
+		}
+		cu_res = cudaStreamCreate(&bkpap_module->bk_cs[1]);
+		if (CUDA_SUCCESS != cu_res) {
+			BKPAP_ERROR("failed to creat cuda stream: %d", cu_res);
+			return OMPI_ERROR;
+		}
+		cu_res = cudaMallocHost(&bkpap_module->host_pinned_buf, mca_coll_bkpap_component.postbuff_size);
+		if (CUDA_SUCCESS != cu_res) {
+			BKPAP_ERROR("failed to malloc host cuda: %d", cu_res);
+			return OMPI_ERROR;
+		}
 	}
 
 	int num_syncstructures = 1;
@@ -264,8 +277,8 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	}
 	bkpap_module->num_syncstructures = num_syncstructures;
 	arrival_arr_offsets_tmp = NULL;
-	
-	if(BKPAP_ALLREDUCE_ALG_CHAIN == alg){
+
+	if (BKPAP_ALLREDUCE_ALG_CHAIN == alg) {
 		bk_launch_background_thread();
 	}
 

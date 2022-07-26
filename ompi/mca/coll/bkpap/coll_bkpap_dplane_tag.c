@@ -166,7 +166,7 @@ int coll_bkpap_tag_prepost_recv(ompi_communicator_t* comm, mca_coll_bkpap_module
 		return OMPI_ERROR;
 	}
 
-	// BKPAP_OUTPUT("rank: %d PREPOSTING BUFFER! (%lu) %p", ompi_comm_rank(comm), tag, d->prepost_req);
+	// BKPAP_OUTPUT("rank: %d PREPOSTING BUFFER! (%lu) %p", ompi_comm_rank(comm), tag, (void*)d->prepost_req);
 	d->prepost_req_set = 1;
 	return OMPI_SUCCESS;
 }

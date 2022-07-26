@@ -5,11 +5,11 @@
 
 #include "mpi.h"
 
-#define BK_NUM_ITERS 3
+#define BK_NUM_ITERS 5
 
 int main(int argc, char* argv[]) {
     int rank, size;
-    float* snd_bff, * rcv_bff, *loc_tmp;
+    float* snd_bff, * rcv_bff, * loc_tmp;
     int g_err = 0;
     int count = 1 << 23;
 
@@ -17,8 +17,7 @@ int main(int argc, char* argv[]) {
 
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    if (rank == 0)printf("BK VALIDATE ALLREDUCE, wsize %d\n", size);
-    
+
     cudaSetDevice(rank);
 
     size_t bff_size = count * sizeof(*snd_bff);
@@ -31,27 +30,36 @@ int main(int argc, char* argv[]) {
         g_sum += (float)i;
     }
 
+    // if (rank == 0)printf("BK VALIDATE ALLREDUCE, wsize %d, vec_size: %d/%ld, %p \n", size, count, bff_size, rcv_bff);
+    printf("BK VALIDATE ALLREDUCE, %d of %d, vec_size: %d/%ld, %p \n", rank, size, count, bff_size, rcv_bff);
+
     for (int i = 0; i < BK_NUM_ITERS; i++) {
-        int err = 0;
+        int err = 0, f_err = -1;
         for (int j = 0; j < count; j++) {
             loc_tmp[j] = (float)rank * i;
         }
 
         cudaMemcpy(rcv_bff, loc_tmp, bff_size, cudaMemcpyHostToDevice);
         cudaMemcpy(snd_bff, loc_tmp, bff_size, cudaMemcpyHostToDevice);
-        
+
+        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Allreduce(snd_bff, rcv_bff, count, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
         // MPI_Allreduce(MPI_IN_PLACE, snd_bff, count, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
 
         cudaMemcpy(loc_tmp, rcv_bff, bff_size, cudaMemcpyDeviceToHost);
+        
+        MPI_Barrier(MPI_COMM_WORLD);
 
         for (int j = 0; j < count; j++) {
-            if (loc_tmp[j] != g_sum * i)
-                err += 1;
+            if (loc_tmp[j] != g_sum * i) {
+                if (-1 == f_err)f_err = j;
+                err = j;
+            }
         }
 
         if (err) {
-            printf("ERROR: rank:%d reult %.2f not equal round %d, shoudl be %.2f\n", rank, loc_tmp[0], i, g_sum * i);
+            printf("ERROR: rank:%d range %d:%d samples: %.2f/%.2f not equal, should be %.2f\n", rank, f_err, err, loc_tmp[f_err], loc_tmp[err], g_sum * i);
             g_err = 69;
         }
         else {
