@@ -241,9 +241,15 @@ typedef enum bk_progress_t_state_t {
 	BK_PROGRESS_T_RUN = 0,
 	BK_PROGRESS_T_KILL = 1,
 	BK_PROGRESS_T_IDLE = 2,
+	BK_PROGRESS_T_ERROR = 3,
 }bk_progress_t_state_t;
 
-void* bk_background_progress_thread(void* args);
+typedef struct bk_t_args_t{
+	int set_cu_ctx;
+	CUcontext cu_ctx;
+}bk_t_args_t;
+
+void* bk_background_progress_thread(void* bk_t_args_t);
 
 typedef struct mca_coll_bkpap_component_t {
 	mca_coll_base_component_t super;
@@ -254,6 +260,7 @@ typedef struct mca_coll_bkpap_component_t {
 	ucp_address_t* ucp_worker_addr;
 	size_t ucp_worker_addr_len;
 
+	bk_t_args_t bk_t_args;
 	pthread_t progress_tid;
 	int progress_thread_flag;
 
