@@ -79,7 +79,8 @@ int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count,
 			}
 
 			// issue next memcpy
-			cudaMemcpyAsync(bk_h_buf, tmpbuf, sendcount * extent, cudaMemcpyDeviceToHost, bk_cs[(segindex % 2) ^ 0x1]);
+			if(segindex - 1 < num_segments)
+				cudaMemcpyAsync(bk_h_buf, tmpbuf, sendcount * extent, cudaMemcpyDeviceToHost, bk_cs[(segindex % 2) ^ 0x1]);
 
 			/* complete the sends before starting the next sends */
 			err = ompi_request_wait_all(tree->tree_nextsize, send_reqs,

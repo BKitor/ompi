@@ -24,7 +24,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 	int recvcount, prevcount, inbi;
 	mca_coll_base_module_t* module = &(bkpap_module->super);
 	bkpap_dplane_mem_t bk_rbuf_memtype = bkpap_module->dplane_mem_t;
-	
+
 
 	/**
 	 * Determine number of segments and number of elements
@@ -137,7 +137,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 				   /* wait on data from last child for previous segment */
 				// ret = ompi_request_wait(&reqs[inbi ^ 1],
 				// 	MPI_STATUSES_IGNORE);
-					ret = bk_ompi_request_wait_all(&reqs[inbi ^ 1], 1);
+				ret = bk_ompi_request_wait_all(&reqs[inbi ^ 1], 1);
 				if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 				local_op_buffer = inbuf[inbi ^ 1];
 				if (i > 0) {
@@ -287,7 +287,7 @@ int mca_coll_bkpap_reduce_generic(const void* sendbuf, void* recvbuf, int origin
 			/* Wait on the remaining request to complete */
 			// ret = ompi_request_wait_all(max_outstanding_reqs, sreq,
 			// 	MPI_STATUSES_IGNORE);
-				ret = bk_ompi_request_wait_all(sreq, max_outstanding_reqs);
+			ret = bk_ompi_request_wait_all(sreq, max_outstanding_reqs);
 			if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
 		}
 	}
@@ -363,24 +363,24 @@ int mca_coll_bkpap_reduce_intra_inplace_binomial(const void* sendbuf, void* recv
 }
 
 int bk_intra_reduce(void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* bkpap_module) {
-    int rank = ompi_comm_rank(comm);
+	int rank = ompi_comm_rank(comm);
 
-    void* reduce_sbuf = (0 == rank) ? MPI_IN_PLACE : rbuf;
-    void* reduce_rbuf = (0 == rank) ? rbuf : NULL;
+	void* reduce_sbuf = (0 == rank) ? MPI_IN_PLACE : rbuf;
+	void* reduce_rbuf = (0 == rank) ? rbuf : NULL;
 
-    switch (bkpap_module->dplane_mem_t){
-    case BKPAP_DPLANE_MEM_TYPE_HOST:
-        return comm->c_coll->coll_reduce(
-            reduce_sbuf, reduce_rbuf, count, dtype, op, 0,
-            comm, comm->c_coll->coll_reduce_module);
-        break;
-    case BKPAP_DPLANE_MEM_TYPE_CUDA:
-    case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
-        return mca_coll_bkpap_reduce_intra_inplace_binomial(reduce_sbuf, reduce_rbuf, count, dtype, op, 0, comm, bkpap_module);
-        break;
-    default:
-        BKPAP_ERROR("Bad memory type, intra-node reduce failed");
-        return OMPI_ERROR;
-        break;
-    }
+	switch (bkpap_module->dplane_mem_t) {
+	case BKPAP_DPLANE_MEM_TYPE_HOST:
+		return comm->c_coll->coll_reduce(
+			reduce_sbuf, reduce_rbuf, count, dtype, op, 0,
+			comm, comm->c_coll->coll_reduce_module);
+		break;
+	case BKPAP_DPLANE_MEM_TYPE_CUDA:
+	case BKPAP_DPLANE_MEM_TYPE_CUDA_MANAGED:
+		return mca_coll_bkpap_reduce_intra_inplace_binomial(reduce_sbuf, reduce_rbuf, count, dtype, op, 0, comm, bkpap_module);
+		break;
+	default:
+		BKPAP_ERROR("Bad memory type, intra-node reduce failed");
+		return OMPI_ERROR;
+		break;
+	}
 }

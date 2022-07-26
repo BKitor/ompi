@@ -53,7 +53,8 @@ static inline int bk_ompi_request_wait_all(ompi_request_t** request_arr, int req
     int tmp_is_completed;
     ompi_request_test_all(req_arr_len, request_arr, &tmp_is_completed, MPI_STATUSES_IGNORE);
     while (!tmp_is_completed) {
-        ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
+		if(NULL != mca_coll_bkpap_component.ucp_worker)
+			ucp_worker_progress(mca_coll_bkpap_component.ucp_worker);
         ompi_request_test_all(req_arr_len, request_arr, &tmp_is_completed, MPI_STATUSES_IGNORE);
     }
     return OMPI_SUCCESS;
