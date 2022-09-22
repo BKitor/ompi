@@ -1,7 +1,6 @@
 #include "coll_bkpap.h"
 #include "coll_bkpap_ucp.inl"
 #include "coll_bkpap_util.inl"
-#include "opal/util/show_help.h"
 
 static void mca_coll_bkpap_module_construct(mca_coll_bkpap_module_t* bkpap_module) {
 	memset(&(bkpap_module->endof_super), 0, sizeof(*bkpap_module) - sizeof(bkpap_module->super));
@@ -239,12 +238,7 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 	size_t arrival_arr_len = 0; // wsize + wsize/k + wsize/k^2 + wsize/k^3 ...
 	int64_t* arrival_arr_offsets_tmp = NULL;
 	switch (alg) {
-	case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
-	case BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE:
-	case BKPAP_ALLREDUCE_ALG_KTREE:
-		BKPAP_ERROR("KTREE algorithms were removed");
-		return OMPI_ERR_NOT_SUPPORTED;
-		break;
+	case BKPAP_ALLREDUCE_ALG_CHAIN_V2:
 	case BKPAP_ALLREDUCE_ALG_RSA:
 	case BKPAP_ALLREDUCE_ALG_BINOMIAL:
 	case BKPAP_ALLREDUCE_ALG_CHAIN:
@@ -259,7 +253,12 @@ int mca_coll_bkpap_lazy_init_module_ucx(mca_coll_bkpap_module_t* bkpap_module, s
 		arrival_arr_len = 0;
 		arrival_arr_offsets_tmp = NULL;
 		break;
+	case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
+	case BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE:
 	default:
+		opal_show_help("help-mpi-coll-bkpap.txt", "bad selection", true,
+			ompi_process_info.nodename,
+			"coll_bkpap_allreduce_alg", alg);
 		BKPAP_ERROR("Bad algorithm %d specified, failed to setup syncstructure", alg);
 		return OMPI_ERROR;
 		break;

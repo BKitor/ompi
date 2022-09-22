@@ -146,7 +146,7 @@ export UCC_CL_BASIC_TLS=all
 
 export OMPI_MCA_coll_bkpap_dataplane_type=$BK_DPLANE_T
 export OMPI_MCA_coll_bkpap_postbuff_size=$((1 << 25))
-export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 25))
+export OMPI_MCA_coll_bkpap_pipeline_segment_size=$((1 << 22))
 
 export OMPI_MCA_coll_bkpap_allreduce_alg=0
 $BK_VAL_FN $BK_RUN_ALG0

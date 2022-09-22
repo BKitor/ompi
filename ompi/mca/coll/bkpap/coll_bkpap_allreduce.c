@@ -278,8 +278,8 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
     mca_coll_bkpap_component.progress_thread_flag = BK_PROGRESS_T_IDLE;
 
     switch (alg) {
-    case BKPAP_ALLREDUCE_ALG_KTREE:
-        ret = coll_bkpap_papaware_ktree_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
+    case BKPAP_ALLREDUCE_ALG_CHAIN_V2:
+        ret = coll_bkpap_papaware_chain_v2_allreduce(sbuf, rbuf, count, dtype, op, ss_intra_comm, ss_inter_comm, bkpap_module);
         break;
     case BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE:
         ret = coll_bkpap_papaware_ktree_allreduce_pipelined(sbuf, rbuf, count, dtype, op, mca_coll_bkpap_component.pipeline_segment_size, ss_intra_comm, ss_inter_comm, bkpap_module);

@@ -4,3 +4,14 @@ hostname:   %s
 priority:   %d
 collective: %s
 #
+
+[bad selection]
+User param was wrong and broke something 
+hostname:   %s
+param:   %s
+val: %d
+#
+
+[custom error]
+BK_ERROR: %s
+#

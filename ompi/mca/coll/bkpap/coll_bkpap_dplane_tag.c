@@ -159,6 +159,7 @@ int coll_bkpap_tag_prepost_recv(ompi_communicator_t* comm, mca_coll_bkpap_module
 	}
 
 	d->prepost_req = ucp_tag_recv_nbx(w, d->buff_arr, d->buff_size, tag, tag_mask, &recv_params);
+	d->prepost_req_tag = tag;
 
 	if (OPAL_UNLIKELY(UCS_PTR_IS_ERR(d->prepost_req))) {
 		ucs_status_t s = UCS_PTR_STATUS(d->prepost_req);
@@ -184,10 +185,11 @@ int coll_bkpap_tag_recv_from_late(void* recv_buf, int recv_count,
 
 	tag = BK_BINOMIAL_TAG_SET_DATA(tag);
 
-	if (BK_BINOMIAL_LAST_PROC_TAG(ompi_comm_size(comm), 0) == tag) {
+	if (bkpap_module->dplane.tag.prepost_req_tag == tag) {
 		stat_ptr = bkpap_module->dplane.tag.prepost_req;
 		bkpap_module->dplane.tag.prepost_req_set = 0;
 		bkpap_module->dplane.tag.prepost_req = NULL;
+		bkpap_module->dplane.tag.prepost_req_tag = 0;
 	}
 	else {
 		bk_fill_tag_recv_params(&recv_params, bkpap_module);

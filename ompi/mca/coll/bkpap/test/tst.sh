@@ -116,7 +116,7 @@ bk_cond_osu_tst() {
 			--map-by core \
 			$BK_OSU_PAP \
 			-m "$BK_MIN_MSIZE:$BK_MAX_MSIZE" \
-			$BK_EXP_FLAGS
+			$BK_EXP_FLAGS # -F 10
 	fi
 }
 

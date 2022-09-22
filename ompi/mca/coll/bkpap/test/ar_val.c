@@ -56,14 +56,14 @@ int main(int argc, char* argv[]) {
         for (int j = 0; j < count; j++) {
             if (snd_bff[j] != g_sum * i){
 				if(-1 == f_err) f_err = j;
-                err = j;
+                err = j+1;
 			}
             if (err)
                 break;
         }
 
         if (err) {
-            printf("ERROR: rank:%d result %.2f not equal round %d, err_pos %d, should be %.2f\n", rank, snd_bff[err], i, err, g_sum * i);
+            printf("ERROR: rank:%d result %.2f not equal round %d, err_pos %d, should be %.2f\n", rank, snd_bff[err-1], i, err-1, g_sum * i);
             g_err = 69;
         }
         else {

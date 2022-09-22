@@ -7,6 +7,7 @@
 #include "bkpap_kernel.h"
 
 #include "opal/class/opal_object.h"
+#include "opal/util/show_help.h"
 
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/mca.h"
@@ -79,7 +80,7 @@ enum bkpap_dbell_state {
 };
 
 typedef enum bkpap_allreduce_algs_t {
-	BKPAP_ALLREDUCE_ALG_KTREE = 0,
+	BKPAP_ALLREDUCE_ALG_CHAIN_V2 = 0,
 	BKPAP_ALLREDUCE_ALG_KTREE_PIPELINE = 1,
 	BKPAP_ALLREDUCE_ALG_KTREE_FULLPIPE = 2,
 	BKPAP_ALLREDUCE_ALG_RSA = 3,
@@ -182,6 +183,7 @@ typedef struct mca_coll_bkpap_tag_dplane_t {
 	bkpap_dplane_mem_t mem_type;
 	int prepost_req_set;
 	mca_coll_bkpap_req_t* prepost_req;
+	ucp_tag_t prepost_req_tag;
 } mca_coll_bkpap_tag_dplane_t;
 
 typedef struct bkpap_mempool_buf {
@@ -298,10 +300,10 @@ int mca_coll_bkpap_get_last_arrival(ompi_communicator_t* comm, mca_coll_bkpap_re
 
 int coll_bkpap_papaware_ktree_allreduce_fullpipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_ktree_allreduce_pipelined(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, size_t seg_size, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
-int coll_bkpap_papaware_ktree_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int ompi_coll_bkpap_base_allreduce_intra_redscat_allgather_gpu(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* comm, mca_coll_bkpap_module_t* module);
 int coll_bkpap_papaware_binomial_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 int coll_bkpap_papaware_chain_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
+int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf, int count, struct ompi_datatype_t* dtype, struct ompi_op_t* op, struct ompi_communicator_t* intra_comm, struct ompi_communicator_t* inter_comm, mca_coll_bkpap_module_t* bkpap_module);
 
 int bkpap_init_mempool(mca_coll_bkpap_module_t* bkpap_module);
 int bkpap_finalize_mempool(mca_coll_bkpap_module_t* bkpap_module);

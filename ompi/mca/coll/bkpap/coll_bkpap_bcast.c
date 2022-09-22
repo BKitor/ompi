@@ -31,6 +31,8 @@ int coll_bkpap_bcast_intra_generic_gpu(void* buffer, int original_count,
 	realsegsize = (ptrdiff_t)count_by_segment * extent;
 
 	if ((size_t)(extent * original_count) > mca_coll_bkpap_component.postbuff_size) {
+		opal_show_help("help-mpi-coll-bkpap.txt", "custom error", true, 
+		"postbuf size to small for bk_bcast_intra_generic_gpu");
 		BKPAP_ERROR("postbuf not large enough for bk bcast");
 		err = OMPI_ERROR;
 		goto error_hndl;
@@ -271,6 +273,9 @@ int bk_inter_bcast(void* buf, int count, struct ompi_datatype_t* dtype,
 		ret = coll_bkpap_bcast_intra_generic_gpu(buf, count, dtype, root, comm, bkpap_module, seg_count, data->cached_pipeline);
 		break;
 	default:
+		opal_show_help("help-mpi-coll-bkpap.txt", "bad selection", true,
+			ompi_process_info.nodename,
+			"coll_bkpap_postbuf_mem_type", memtype);
 		BKPAP_ERROR("Bad memtype in bkpap_inter_bcast");
 		ret = OMPI_ERROR;
 		break;
