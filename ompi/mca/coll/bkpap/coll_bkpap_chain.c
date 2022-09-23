@@ -182,7 +182,7 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 		mca_coll_bkpap_get_coll_recvbuf(&tmp_recv, bkpap_module);
 
 		// Syncronize and get arrival
-		uint64_t p_tag, c_tag;
+		uint64_t p_tag, c_tag, c_tag_mask, p_tag_mask;
 		int64_t arrival_pos = -1;
 		ret = mca_coll_bkpap_arrive_ss(inter_rank, 0, 0, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "arrive_ss failed", bkpap_abort_chain_allreduce);
@@ -194,15 +194,16 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 		// inter_comm->c_coll->coll_ibarrier(inter_comm, &ibarrer_req, inter_comm->c_coll->coll_ibarrier_module);
 
 		if (0 == arrival) { // first
-			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag);
-			int child_rank;
-			ret = MCA_PML_CALL(irecv(&child_rank, 1, MPI_INT, MPI_ANY_SOURCE, c_tag, inter_comm, &recv_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "peer rank recv failed", bkpap_abort_chain_allreduce);
-			bk_ompi_request_wait_all(recv_reqs, 1);
+			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag_mask);
 
-			ret = MCA_PML_CALL(isend(rbuf, count, dtype, child_rank, c_tag, MCA_PML_BASE_SEND_STANDARD, inter_comm, &send_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "reduce data send failed", bkpap_abort_chain_allreduce);
-			bk_ompi_request_wait_all(send_reqs, 1);
+			ret = bkpap_module->dplane_ftbl.send_to_late(rbuf, count, dtype, c_tag, c_tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_chain_allreduce);
+
+			int child_rank = -1;
+			while (-1 == child_rank) {
+				ret = mca_coll_bkpap_get_rank_of_arrival(arrival + 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &child_rank);
+				BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_abort_chain_allreduce);
+			}
 
 			BKPAP_CHK_MPI_MSG_LBL(ret, "bcast data recv seg 0 failed", bkpap_abort_chain_allreduce);
 			for (int segidx = 0; segidx < num_segments; segidx++) {
@@ -217,21 +218,17 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 		}
 		else if ((inter_size - 2) == arrival) { //second-last
 			int parent_rank = -1;
-			int self_rank = ompi_comm_rank(inter_comm);
-			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag);
-			BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag);
+			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag_mask);
+			BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag_mask);
 			while (-1 == parent_rank) {
 				ret = mca_coll_bkpap_get_rank_of_arrival(arrival - 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &parent_rank);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_abort_chain_allreduce);
 			}
 
 			// recv data from parent
-			ret = MCA_PML_CALL(isend(&self_rank, 1, MPI_INT, parent_rank, p_tag, MCA_PML_BASE_SEND_STANDARD, inter_comm, &send_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "send rank from parent failed", bkpap_abort_chain_allreduce);
-			ret = MCA_PML_CALL(irecv(tmp_recv, count, dtype, parent_rank, p_tag, inter_comm, &recv_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "recv data from parent failed", bkpap_abort_chain_allreduce);
-			tmp_reqs[0] = send_reqs[0]; tmp_reqs[1] = recv_reqs[0];
-			bk_ompi_request_wait_all(tmp_reqs, 2);
+			ret = bkpap_module->dplane_ftbl.recv_from_early(tmp_recv, count, dtype, parent_rank, p_tag, p_tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_recv_child", inter_rank);
 
 			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype, bkpap_module);
 			BKPAP_CHK_MPI_MSG_LBL(ret, "local_reduce failed", bkpap_abort_chain_allreduce);
@@ -242,9 +239,9 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 			BKPAP_CHK_MPI_MSG_LBL(ret, "get_last_arrival failed", bkpap_abort_chain_allreduce);
 			BKPAP_OUTPUT("rank %d, arrival: %d, last_rank: %d", inter_rank, arrival, child_rank);
 
-			ret = MCA_PML_CALL(isend(rbuf, count, dtype, child_rank, c_tag, MCA_PML_BASE_SEND_STANDARD, inter_comm, &send_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "reduce send data to parent", bkpap_abort_chain_allreduce);
-			bk_ompi_request_wait_all(send_reqs, 1);
+			ret = bkpap_module->dplane_ftbl.send_to_early(rbuf, count, dtype, child_rank, c_tag, c_tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_early failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_send_parent", inter_rank);
 
 			// pipeline bcast
 			ret = MCA_PML_CALL(irecv(rbuf, seg_count, dtype, child_rank, c_tag, inter_comm, &recv_reqs[0]));
@@ -270,16 +267,16 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 		}
 		else if ((inter_size - 1) == arrival) { //last
 			int parent_rank = -1;
-			BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag);
+			BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag_mask);
 			while (-1 == parent_rank) {
 				ret = mca_coll_bkpap_get_rank_of_arrival(arrival - 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &parent_rank);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "get_rank_of_arrival failed", bkpap_abort_chain_allreduce);
 			}
 
 			// recv data from parent
-			ret = MCA_PML_CALL(irecv(tmp_recv, count, dtype, MPI_ANY_SOURCE, p_tag, inter_comm, &recv_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "data recv failed", bkpap_abort_chain_allreduce);
-			bk_ompi_request_wait_all(recv_reqs, 1);
+			ret = bkpap_module->dplane_ftbl.recv_from_late(tmp_recv, count, dtype, p_tag, p_tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_recv_child", inter_rank);
 
 			for (int segidx = 0; segidx < num_segments; segidx++) {
 				ptrdiff_t offset = realsegsize * segidx;
@@ -297,9 +294,8 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 			bk_ompi_request_wait_all(send_reqs, 2);
 		}
 		else {
-			BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag);
-			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag);
-			int self_rank = ompi_comm_rank(inter_comm);
+			BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag_mask);
+			BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag_mask);
 			int parent_rank = -1, child_rank = -1;
 			while (-1 == parent_rank) {
 				ret = mca_coll_bkpap_get_rank_of_arrival(arrival - 1, 0, bkpap_module->remote_syncstructure, bkpap_module, &parent_rank);
@@ -307,23 +303,17 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 			}
 
 			// recv data from parent
-			ret = MCA_PML_CALL(isend(&self_rank, 1, MPI_INT, parent_rank, p_tag, MCA_PML_BASE_SEND_STANDARD, inter_comm, &send_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "send rank to parent failed", bkpap_abort_chain_allreduce);
-			ret = MCA_PML_CALL(irecv(tmp_recv, count, dtype, parent_rank, p_tag, inter_comm, &recv_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "recv data form parent failed", bkpap_abort_chain_allreduce);
-			tmp_reqs[0] = send_reqs[0]; tmp_reqs[1] = recv_reqs[0];
-			bk_ompi_request_wait_all(tmp_reqs, 2);
+			ret = bkpap_module->dplane_ftbl.recv_from_early(tmp_recv, count, dtype, parent_rank, p_tag, p_tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "recv_from_early failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_recv_child", inter_rank);
 
 			ret = mca_coll_bkpap_reduce_local(op, tmp_recv, rbuf, count, dtype, bkpap_module);
 			BKPAP_CHK_MPI_MSG_LBL(ret, "local_reduce failed", bkpap_abort_chain_allreduce);
 
 			// send data to child
-			ret = MCA_PML_CALL(irecv(&child_rank, 1, MPI_INT, MPI_ANY_SOURCE, c_tag, inter_comm, &recv_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "recv rank from child failed", bkpap_abort_chain_allreduce);
-			bk_ompi_request_wait_all(recv_reqs, 1);
-			ret = MCA_PML_CALL(isend(rbuf, count, dtype, child_rank, c_tag, MCA_PML_BASE_SEND_STANDARD, inter_comm, &send_reqs[0]));
-			BKPAP_CHK_MPI_MSG_LBL(ret, "send data to child failed", bkpap_abort_chain_allreduce);
-			bk_ompi_request_wait_all(send_reqs, 1);
+			ret = bkpap_module->dplane_ftbl.send_to_late(rbuf, count, dtype, c_tag, c_tag_mask, inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_chain_allreduce);
+			BKPAP_PROFILE("bkpap_chain_send_parent", inter_rank);
 
 			// pipeline bcast
 			ret = MCA_PML_CALL(irecv(rbuf, seg_count, dtype, child_rank, c_tag, inter_comm, &recv_reqs[0]));
@@ -356,6 +346,11 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 			BKPAP_CHK_MPI_MSG_LBL(ret, "reset_remote_ss failed", bkpap_abort_chain_allreduce);
 		}
 
+		if (BKPAP_DPLANE_TAG == bkpap_module->dplane_t
+			&& !bkpap_module->dplane.tag.prepost_req_set) {
+			ret = coll_bkpap_tag_prepost_recv(inter_comm, bkpap_module);
+			BKPAP_CHK_MPI_MSG_LBL(ret, "prepost failed", bkpap_abort_chain_allreduce);
+		}
 	}
 
 	ret = bk_intra_bcast(rbuf, count, dtype, 0, intra_comm, bkpap_module);

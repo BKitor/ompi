@@ -133,7 +133,6 @@ static int mca_coll_bkpap_close(void) {
         ucp_cleanup(mca_coll_bkpap_component.ucp_context);
     }
 
-    BKPAP_OUTPUT("SEE YA LATER LOSERS!!!");
     opal_output_close(mca_coll_bkpap_output);
     return OMPI_SUCCESS;
 }

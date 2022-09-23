@@ -265,7 +265,7 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
 #endif
 
             if (BKPAP_DPLANE_TAG == bkpap_module->dplane_t
-                && BKPAP_ALLREDUCE_ALG_CHAIN == alg) {
+                && (BKPAP_ALLREDUCE_ALG_CHAIN == alg || BKPAP_ALLREDUCE_ALG_CHAIN_V2 == alg)) {
                 ret = coll_bkpap_tag_prepost_recv(ss_inter_comm, bkpap_module);
                 BKPAP_CHK_MPI_MSG_LBL(ret, "prepost failed", bkpap_ar_abort);
             }
