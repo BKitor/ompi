@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
     }
 
     // if (rank == 0)printf("BK VALIDATE ALLREDUCE, wsize %d, vec_size: %d/%ld, %p \n", size, count, bff_size, rcv_bff);
-    printf("BK VALIDATE ALLREDUCE, %d of %d, vec_size: %d/%ld, %p \n", rank, size, count, bff_size, rcv_bff);
+    printf("BK VALIDATE ALLREDUCE, %d of %d, vec count: %d, bff_size: %ld, rcv_ptr: [%p] \n", rank, size, count, bff_size, rcv_bff);
 
     for (int i = 0; i < BK_NUM_ITERS; i++) {
         int err = 0, f_err = -1;
@@ -43,11 +43,12 @@ int main(int argc, char* argv[]) {
         cudaMemcpy(snd_bff, loc_tmp, bff_size, cudaMemcpyHostToDevice);
 
         MPI_Barrier(MPI_COMM_WORLD);
-        MPI_Allreduce(snd_bff, rcv_bff, count, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-        // MPI_Allreduce(MPI_IN_PLACE, snd_bff, count, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        // MPI_Allreduce(snd_bff, rcv_bff, count, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, snd_bff, count, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
-        cudaMemcpy(loc_tmp, rcv_bff, bff_size, cudaMemcpyDeviceToHost);
+        // cudaMemcpy(loc_tmp, rcv_bff, bff_size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(loc_tmp, snd_bff, bff_size, cudaMemcpyDeviceToHost);
         
         MPI_Barrier(MPI_COMM_WORLD);
 

@@ -170,7 +170,7 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 	ompi_datatype_type_extent(dtype, &extent);
 	int num_segments = (count + seg_count - 1) / seg_count;
 	size_t realsegsize = (ptrdiff_t)seg_count * extent;
-	BKPAP_OUTPUT("CHAIN_V2 count: %d, dsize: %ld, seg_size: %ld num_segs: %d, realsegsize: %ld", count, extent, segsize, num_segments, realsegsize);
+	BKPAP_OUTPUT("CHAIN_V2 count: %d, dsize: %ld, seg_size: %ld num_segs: %d, realsegsize: %ld seg_count: %ld", count, extent, segsize, num_segments, realsegsize, seg_count);
 
 	ret = bk_intra_reduce(rbuf, count, dtype, op, intra_comm, bkpap_module);
 	BKPAP_CHK_MPI_MSG_LBL(ret, "intra reduce failed", bkpap_abort_chain_allreduce);
@@ -188,7 +188,7 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 		ret = mca_coll_bkpap_arrive_ss(inter_rank, 0, 0, bkpap_module->remote_syncstructure, bkpap_module, inter_comm, &arrival_pos);
 		BKPAP_CHK_MPI_MSG_LBL(ret, "arrive_ss failed", bkpap_abort_chain_allreduce);
 		int arrival = arrival_pos + 1;
-		BKPAP_OUTPUT("CHAIN_START rank: %d, arrival:%d", inter_rank, arrival);
+		BKPAP_OUTPUT("CHAIN_V2_START rank: %d, arrival:%d", inter_rank, arrival);
 
 		BK_BINOMIAL_MAKE_TAG(arrival + 1, 0, c_tag, c_tag_mask);
 		BK_BINOMIAL_MAKE_TAG(arrival, 0, p_tag, p_tag_mask);
@@ -197,7 +197,6 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 		// inter_comm->c_coll->coll_ibarrier(inter_comm, &ibarrer_req, inter_comm->c_coll->coll_ibarrier_module);
 
 		if (0 == arrival) { // first
-
 			ret = bkpap_module->dplane_ftbl.send_to_late(rbuf, count, dtype, c_tag, c_tag_mask, inter_comm, bkpap_module);
 			BKPAP_CHK_MPI_MSG_LBL(ret, "send_to_late failed", bkpap_abort_chain_allreduce);
 
@@ -225,8 +224,10 @@ int coll_bkpap_papaware_chain_v2_allreduce(const void* sbuf, void* rbuf,
 					intra_comm->c_coll->coll_ibcast_module);
 				BKPAP_CHK_MPI_MSG_LBL(ret, "intra ibcast failed", bkpap_abort_chain_allreduce);
 			}
-			bk_ompi_request_wait_all(&recv_reqs[num_segments % 2], 1);
-			bk_ompi_request_wait_all(&ibcast_reqs[num_segments % 2], 1);
+			tmp_reqs[0] = recv_reqs[(num_segments%2) ^ 1]; tmp_reqs[1] = ibcast_reqs[num_segments%2];
+			bk_ompi_request_wait_all(tmp_reqs, 2);
+			recv_reqs[(num_segments%2) ^ 1]= MPI_REQUEST_NULL; ibcast_reqs[num_segments%2] = MPI_REQUEST_NULL;
+			
 			ret = intra_comm->c_coll->coll_ibcast(((int8_t*)rbuf) + ((num_segments - 1) * realsegsize), seg_count, dtype, 0, intra_comm, &ibcast_reqs[num_segments % 2],
 				intra_comm->c_coll->coll_ibcast_module);
 			bk_ompi_request_wait_all(ibcast_reqs, 2);
