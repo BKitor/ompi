@@ -234,6 +234,11 @@ int mca_coll_bkpap_allreduce(const void* sbuf, void* rbuf, int count,
         }
         BKPAP_OUTPUT("Wireup hier comm SUCCESS");
     }
+    
+    if(bkpap_module->dplane_mem_t == BKPAP_DPLANE_MEM_TYPE_CUDA && !opal_cuda_check_one_buf(rbuf, NULL)){
+        BKPAP_OUTPUT("GPU mem specified but cpu mem proivded, falling back to lower prio allreduce");
+        return bkpap_module->fallback_allreduce(sbuf, rbuf, count, dtype, op, comm, bkpap_module->fallback_allreduce_module);
+    }
 
     int global_wsize = ompi_comm_size(comm);
     int global_rank = ompi_comm_rank(comm);
